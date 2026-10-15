@@ -111,6 +111,8 @@ def numeraire : Currency := true
 structure World where
   bal : Currency → Address → ℤ
   claims : Currency → Address → ℤ
+  /-- Ghost: ERC-6909 total supply per currency (`Σ claims`); maintained by `mint` / `burn`. -/
+  claimsSupply : Currency → ℤ
   /-- Tokens inside the PoolManager owned by the pool itself: LP liquidity and accrued LP fees
       (`donate` lands here).  `bal c pm = Σ claims + reserves` is the backing invariant. -/
   reserves : Currency → ℤ
@@ -150,11 +152,13 @@ def addDelta (t : Tx) (c : Currency) (a : Address) (d : ℤ) : Tx :=
 /-- `manager.mint(dst, id, n)`. -/
 def mint (t : Tx) (c : Currency) (dst : Address) (n : ℕ) (by_ : Address) : Tx :=
   { (t.addDelta c by_ (-(n : ℤ))) with
-    w := { t.w with claims := Function.update t.w.claims c (adjust (t.w.claims c) dst (· + n)) } }
+    w := { t.w with claims := Function.update t.w.claims c (adjust (t.w.claims c) dst (· + n)),
+                    claimsSupply := Function.update t.w.claimsSupply c (t.w.claimsSupply c + n) } }
 /-- `manager.burn(src, id, n)`. -/
 def burn (t : Tx) (c : Currency) (src : Address) (n : ℕ) (by_ : Address) : Tx :=
   { (t.addDelta c by_ (n : ℤ)) with
-    w := { t.w with claims := Function.update t.w.claims c (adjust (t.w.claims c) src (· - n)) } }
+    w := { t.w with claims := Function.update t.w.claims c (adjust (t.w.claims c) src (· - n)),
+                    claimsSupply := Function.update t.w.claimsSupply c (t.w.claimsSupply c - n) } }
 /-- `manager.take(c, dst, n)` — real tokens out of the PoolManager. -/
 def take (cfg : Config) (t : Tx) (c : Currency) (dst : Address) (n : ℕ) (by_ : Address) : Tx :=
   (t.transfer c cfg.pm dst n).addDelta c by_ (-(n : ℤ))
