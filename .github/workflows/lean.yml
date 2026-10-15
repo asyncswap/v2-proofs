@@ -1,8 +1,9 @@
 name: proofs
 
+# Proofs are checked only when main moves.
 on:
   push:
-  pull_request:
+    branches: [main]
 
 jobs:
   build:
