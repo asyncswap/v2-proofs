@@ -1,0 +1,16 @@
+name = "asyncswap-proofs"
+version = "0.1.0"
+defaultTargets = ["AsyncSwapSpec", "AsyncSwapProtocol"]
+
+[[require]]
+name = "mathlib"
+git = "https://github.com/leanprover-community/mathlib4"
+rev = "master"
+
+# v2 hook: fee, matching, partial fills, escrow invariant, admin, radix price tree
+[[lean_lib]]
+name = "AsyncSwapSpec"
+
+# Call-sequence state machine: Router / PoolManager / hook / FeeVault / ledgers
+[[lean_lib]]
+name = "AsyncSwapProtocol"
