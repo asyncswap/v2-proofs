@@ -295,6 +295,18 @@ theorem updatePriceWithSig_requires_sig {cfg : Config} {w w' : World} {o : Order
   simp only [Option.some.injEq] at h; subst h
   exact ⟨hg.1, hg.2.1, hg.2.2.1, by simp [Tx.setMinimum, Tx.useHookNonce, Tx.start]⟩
 
+theorem nonce_update_mono' (g : ℕ → Bool) (n : ℕ) {k : ℕ} (h : g k = true) :
+    Function.update g n true k = true := by
+  by_cases hk : k = n
+  · subst hk; simp
+  · simp [hk, h]
+
+theorem nonce_update_mono (f : Address → ℕ → Bool) (a : Address) (n : ℕ) {m : Address} {k : ℕ}
+    (h : f m k = true) : Function.update f a (Function.update (f a) n true) m k = true := by
+  by_cases hm : m = a
+  · subst hm; simp [nonce_update_mono' _ _ h]
+  · simp [hm, h]
+
 /-- Nonce monotonicity across the whole protocol: a used hook nonce stays used. -/
 theorem step_hookNonce_mono {cfg : Config} {w w' : World} {a : Action} (h : step cfg w a = some w')
     {maker : Address} {n : ℕ} (hu : w.hookNonce maker n = true) : w'.hookNonce maker n = true := by
@@ -308,6 +320,6 @@ theorem step_hookNonce_mono {cfg : Config} {w w' : World} {a : Action} (h : step
       Tx.createOrder, Tx.deleteOrder, Tx.setMinimum, Tx.setExecutor, Tx.useHookNonce,
       Tx.useRouterCancelNonce, Tx.usePermit2Nonce, Tx.setPendingNative, Tx.start,
       Function.update_apply] <;>
-    (try split_ifs) <;> simp_all
+    (try split_ifs) <;> simp_all [nonce_update_mono, nonce_update_mono']
 
 end AsyncSwapProtocol
