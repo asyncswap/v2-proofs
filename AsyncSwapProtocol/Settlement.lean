@@ -323,3 +323,66 @@ theorem step_hookNonce_mono {cfg : Config} {w w' : World} {a : Action} (h : step
     (try split_ifs) <;> simp_all [nonce_update_mono, nonce_update_mono']
 
 end AsyncSwapProtocol
+
+namespace AsyncSwapProtocol
+open Protocol Tx
+
+/-! ## FeeVault.collect and sweep (decision 4) -/
+
+/-- Only the current owner can collect, and collection moves exactly the vault's fee claims
+    for that currency to the recipient: the vault's claims drop to zero, the recipient receives
+    that amount of real tokens, and no order record or hook claim is touched. -/
+theorem collect_settlement {cfg : Config} {w w' : World} {sender : Address} {c : Currency}
+    {recipient : Address} (h : collectFees cfg w sender c recipient = some w')
+    (hr : recipient ≠ cfg.pm) (hnn : 0 ≤ w.claims c cfg.vault) :
+    sender = w.owner
+    ∧ w'.claims c cfg.vault = 0
+    ∧ w'.bal c recipient = w.bal c recipient + (w.claims c cfg.vault).toNat
+    ∧ (∀ c', w'.claims c' cfg.hook = w.claims c' cfg.hook)
+    ∧ w'.orders = w.orders := by
+  unfold collectFees at h
+  split_ifs at h with hg
+  simp only [Option.some.injEq] at h; subst h
+  obtain ⟨hs, _, hbacked, _⟩ := hg
+  have hhv := cfg.hook_ne_vault
+  have hpv := cfg.vault_ne_pm
+  refine ⟨hs, ?_, ?_, ?_, by simp [orders_collectBody]⟩
+  · simp only [collectBody, Tx.take, claims_transfer, claims_addDelta, claims_burn_apply, claims_start]
+    simp only [true_and, ↓reduceIte]
+    omega
+  · cases c <;>
+      simp only [collectBody, Tx.take, bal_addDelta, bal_burn, bal_transfer_apply, bal_start,
+        hr, Ne.symm hr, Ne.symm hpv, hpv, and_true, and_false, true_and, false_and, ↓reduceIte,
+        eq_self_iff_true, not_false_eq_true, Bool.false_eq_true, Bool.true_eq_false] <;> omega
+  · intro c'
+    cases c <;> cases c' <;>
+      simp only [collectBody, Tx.take, claims_transfer, claims_addDelta, claims_burn_apply, claims_start,
+        hhv, Ne.symm hhv, and_true, and_false, true_and, false_and, ↓reduceIte, eq_self_iff_true,
+        not_false_eq_true, Bool.false_eq_true, Bool.true_eq_false]
+
+/-- Collecting never moves maker escrow: the hook's claims are untouched (above) and the
+    PoolManager pays out at most what the vault held, which the guard requires to be backed. -/
+theorem collect_requires_owner {cfg : Config} {w w' : World} {sender : Address} {c : Currency}
+    {recipient : Address} (h : collectFees cfg w sender c recipient = some w') : sender = w.owner := by
+  unfold collectFees at h; split_ifs at h with hg; exact hg.1
+
+/-- `sweep` is owner-only and moves only the hook's *own* token balance: claims (escrow and
+    fees) and order records are untouched, so stranded funds can be recovered but escrow cannot
+    be swept. -/
+theorem sweep_settlement {cfg : Config} {w w' : World} {sender : Address} {c : Currency} {dst : Address}
+    (h : sweep cfg w sender c dst = some w') (hd : dst ≠ cfg.hook) :
+    sender = w.owner
+    ∧ w'.bal c cfg.hook = w.bal c cfg.hook - (w.bal c cfg.hook).toNat
+    ∧ w'.bal c dst = w.bal c dst + (w.bal c cfg.hook).toNat
+    ∧ w'.claims = w.claims
+    ∧ w'.orders = w.orders := by
+  unfold sweep at h
+  split_ifs at h with hg
+  simp only [Option.some.injEq] at h; subst h
+  refine ⟨hg.1, ?_, ?_, rfl, rfl⟩
+  · cases c <;> simp only [bal_transfer_apply, bal_start, hd, Ne.symm hd, ↓reduceIte, eq_self_iff_true,
+      Bool.false_eq_true, Bool.true_eq_false, if_true, if_false]
+  · cases c <;> simp only [bal_transfer_apply, bal_start, hd, Ne.symm hd, ↓reduceIte, eq_self_iff_true,
+      Bool.false_eq_true, Bool.true_eq_false, if_true, if_false]
+
+end AsyncSwapProtocol
