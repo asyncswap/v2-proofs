@@ -454,8 +454,9 @@ def redeemNative (cfg : Config) (w : World) (sender : Address) (amount : ℕ) (r
     some (((Tx.start w).burn false sender amount cfg.nativeClaims).take cfg false recipient amount cfg.nativeClaims).w
   else none
 
+/-- `amountIn != 0` in the contract; under the storage invariant that is `o.key ∈ openKeys`. -/
 abbrev updatePriceGuard (w : World) (caller : Address) (o : Order) (newMin : ℕ) : Prop :=
-  caller = o.owner ∧ newMin ≠ 0 ∧ (w.orders o.key).amountIn ≠ 0
+  caller = o.owner ∧ newMin ≠ 0 ∧ (w.orders o.key).amountIn ≠ 0 ∧ o.key ∈ w.openKeys
 
 def updatePrice (w : World) (sender : Address) (o : Order) (newMin : ℕ) : Option World :=
   if updatePriceGuard w sender o newMin
