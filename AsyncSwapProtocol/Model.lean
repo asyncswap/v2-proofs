@@ -388,7 +388,8 @@ def fillBody (cfg : Config) (w : World) (sender : Address) (o : Order) (value : 
   let t4 := t3.deleteOrder o.key
   let t5 := if cfg.isNative o.output then t4.settle cfg o.output cfg.hook cfg.hook live else t4  -- `output.settle(pm, hook, min+fee, false)`
   let t6 := t5.take cfg o.output o.owner info.amountOutMin cfg.hook                       -- maker paid
-  let t7 := if fee ≠ 0 then t6.mint o.output cfg.vault fee cfg.hook else t6              -- fee claim to the vault
+  -- `if (fee != 0)` in the contract only skips the event; minting zero claims is a no-op
+  let t7 := t6.mint o.output cfg.vault fee cfg.hook                                       -- fee claim to the vault
   let t8 := t7.burn o.input cfg.hook info.amountIn cfg.hook                               -- escrow claim burned
   let t9 := t8.take cfg o.input sender info.amountIn cfg.hook                             -- filler paid
   t9.setPendingNative 0                                                                   -- transient cleared
@@ -462,9 +463,9 @@ def invalidateNonce (w : World) (sender : Address) (nonce : ℕ) : Option World 
 /-! ### FeeVault.collect: owner-only, `unlock` from the vault, burn and take all fee claims -/
 
 def collectBody (cfg : Config) (w : World) (c : Currency) (recipient : Address) : Tx :=
-  let amount := (w.claims c cfg.vault).toNat
-  let t0 := Tx.start w
-  if amount ≠ 0 then (t0.burn c cfg.vault amount cfg.vault).take cfg c recipient amount cfg.vault else t0
+  -- `if (amount != 0)` in the contract only skips the calls; burning / taking zero is a no-op
+  ((Tx.start w).burn c cfg.vault (w.claims c cfg.vault).toNat cfg.vault).take cfg c recipient
+    (w.claims c cfg.vault).toNat cfg.vault
 
 def collectFees (cfg : Config) (w : World) (sender : Address) (c : Currency) (recipient : Address) :
     Option World :=

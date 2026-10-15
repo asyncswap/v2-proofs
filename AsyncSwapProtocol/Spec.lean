@@ -67,7 +67,7 @@ theorem orders_cancelBody (cfg : Config) (t : Tx) (o : Order) :
 
 theorem orders_collectBody (cfg : Config) (w : World) (c : Currency) (r : Address) :
     (collectBody cfg w c r).w.orders = w.orders := by
-  simp only [collectBody]; split_ifs <;> simp
+  simp [collectBody]
 
 /-- **Frame.** No action changes any order record other than the one it names. -/
 theorem step_frame {cfg : Config} {w w' : World} {a : Action} (h : step cfg w a = some w')
