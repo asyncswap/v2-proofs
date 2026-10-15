@@ -418,3 +418,146 @@ theorem step_backing {cfg : Config} {w w' : World} {a : Action} (hb : Backing cf
     simpa [phi, Tx.start, Tx.setExecutor] using hb c
 
 end AsyncSwapProtocol.V2
+
+namespace AsyncSwapProtocol.V2
+open Protocol Tx
+
+/-! ## Per-party settlement -/
+
+theorem Order.input_eq (o : Order) : o.input = !o.zeroForOne := rfl
+theorem Order.output_eq (o : Order) : o.output = o.zeroForOne := rfl
+
+@[simp] theorem hasLiquidity_start (w : World) : (Tx.start w).w.hasLiquidity = w.hasLiquidity := rfl
+@[simp] theorem hasLiquidity_transfer (t : Tx) c s d n : (t.transfer c s d n).w.hasLiquidity = t.w.hasLiquidity := rfl
+@[simp] theorem hasLiquidity_mint (t : Tx) c d n b : (t.mint c d n b).w.hasLiquidity = t.w.hasLiquidity := rfl
+@[simp] theorem hasLiquidity_burn (t : Tx) c s n b : (t.burn c s n b).w.hasLiquidity = t.w.hasLiquidity := rfl
+@[simp] theorem hasLiquidity_donate (t : Tx) c n b : (t.donate c n b).w.hasLiquidity = t.w.hasLiquidity := rfl
+@[simp] theorem hasLiquidity_poolSwap (t : Tx) ci co ai ao b : (t.poolSwap ci co ai ao b).w.hasLiquidity = t.w.hasLiquidity := rfl
+@[simp] theorem hasLiquidity_addDelta (t : Tx) c a d : (t.addDelta c a d).w.hasLiquidity = t.w.hasLiquidity := rfl
+@[simp] theorem hasLiquidity_setPendingNative (t : Tx) n : (t.setPendingNative n).w.hasLiquidity = t.w.hasLiquidity := rfl
+@[simp] theorem hasLiquidity_deleteOrder (t : Tx) k : (t.deleteOrder k).w.hasLiquidity = t.w.hasLiquidity := rfl
+@[simp] theorem hasLiquidity_setOrder (t : Tx) k i : (t.setOrder k i).w.hasLiquidity = t.w.hasLiquidity := rfl
+@[simp] theorem hasLiquidity_useRouterCancelNonce (t : Tx) m n : (t.useRouterCancelNonce m n).w.hasLiquidity = t.w.hasLiquidity := rfl
+
+structure FillParties (cfg : Config) (sender owner : Address) : Prop where
+  sender_ne_owner : sender ≠ owner
+  sender_ne_pm : sender ≠ cfg.pm
+  sender_ne_hook : sender ≠ cfg.hook
+  sender_ne_vault : sender ≠ cfg.vault
+  owner_ne_pm : owner ≠ cfg.pm
+  owner_ne_hook : owner ≠ cfg.hook
+  owner_ne_vault : owner ≠ cfg.vault
+
+set_option maxHeartbeats 2000000 in
+/-- **v2 fill settlement.** With `i = orders[o]`, `live = i.amountOutMin + fee`:
+    the maker receives exactly `i.amountOutMin` of output (as claims if native), the filler
+    pays `live` and receives the whole escrow `i.amountIn` of input (as claims if native), the
+    vault's output claims grow by the fee (plus the forfeited bid when the output is the
+    numeraire and the pool has no liquidity), the hook's input claims shrink by the escrow
+    (plus the bid when the input is the numeraire), the hook's own token balances are
+    untouched, and `live ≤ maxPrice`. -/
+theorem fill_settlement {cfg : Config} {w w' : World} {sender : Address} {o : Order} {maxPrice value : ℕ}
+    (h : fillOrder cfg w sender o maxPrice value = some w') (hp : FillParties cfg sender o.owner) :
+    (if cfg.isNative o.output
+       then w'.claims o.output o.owner = w.claims o.output o.owner + (w.orders o.key).amountOutMin
+            ∧ w'.bal o.output o.owner = w.bal o.output o.owner
+       else w'.bal o.output o.owner = w.bal o.output o.owner + (w.orders o.key).amountOutMin)
+    ∧ w'.bal o.output sender = w.bal o.output sender - liveGross w o.key
+    ∧ (if cfg.isNative o.input
+       then w'.claims o.input sender = w.claims o.input sender + (w.orders o.key).amountIn
+       else w'.bal o.input sender = w.bal o.input sender + (w.orders o.key).amountIn)
+    ∧ w'.claims o.output cfg.vault = w.claims o.output cfg.vault + poolFee (w.orders o.key).amountOutMin
+        + (if o.output = numeraire ∧ w.hasLiquidity = false then (w.orders o.key).priorityFee else 0)
+    ∧ w'.claims o.input cfg.hook = w.claims o.input cfg.hook - (w.orders o.key).amountIn
+        - (if o.input = numeraire then (w.orders o.key).priorityFee else 0)
+    ∧ (∀ c, w'.bal c cfg.hook = w.bal c cfg.hook)
+    ∧ liveGross w o.key ≤ maxPrice := by
+  unfold fillOrder at h
+  split_ifs at h with hg
+  simp only [Option.some.injEq] at h; subst h
+  obtain ⟨hval, hmax, _, _, _, _⟩ := hg.1
+  have hpm_hook := cfg.hook_ne_pm
+  have hhv := cfg.hook_ne_vault
+  have hpv := cfg.vault_ne_pm
+  obtain ⟨h1, h2, h3, h4, h5, h6, h7⟩ := hp
+  have hlive : (liveGross w o.key : ℤ) = (w.orders o.key).amountOutMin + poolFee (w.orders o.key).amountOutMin := by
+    simp [liveGross, gross]
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, hmax⟩
+  all_goals (try intro c)
+  all_goals
+    (try cases c) <;> cases hz : o.zeroForOne <;> by_cases hn : cfg.native0 = true <;>
+    cases hl : w.hasLiquidity <;>
+    simp only [Config.isNative, Order.output_eq, Order.input_eq, hz, hn,
+      Bool.not_true, Bool.not_false, Bool.false_and, Bool.true_and, Bool.false_eq_true, Bool.true_eq_false,
+      ↓reduceIte] at hval ⊢ <;>
+    simp only [fillBody, payOutBody, settleBidBody, Tx.payOut, Tx.take, Tx.settle, Config.isNative,
+      Order.output_eq, Order.input_eq, numeraire, hz, hn, hl,
+      hasLiquidity_start, hasLiquidity_transfer, hasLiquidity_mint, hasLiquidity_burn, hasLiquidity_donate,
+      hasLiquidity_poolSwap, hasLiquidity_addDelta, hasLiquidity_setPendingNative, hasLiquidity_deleteOrder,
+      hasLiquidity_setOrder, hasLiquidity_useRouterCancelNonce,
+      Bool.not_true, Bool.not_false, Bool.false_and, Bool.true_and, Bool.false_eq_true, Bool.true_eq_false,
+      bal_setPendingNative, bal_mint, bal_burn, bal_donate, bal_addDelta, bal_deleteOrder, bal_start,
+      claims_setPendingNative, claims_transfer, claims_addDelta, claims_deleteOrder, claims_donate, claims_start,
+      bal_transfer_apply, claims_mint_apply, claims_burn_apply,
+      h1, h2, h3, h4, h5, h6, h7, Ne.symm h1, Ne.symm h2, Ne.symm h3, Ne.symm h4, Ne.symm h5, Ne.symm h6,
+      Ne.symm h7, hpm_hook, hhv, hpv, Ne.symm hpm_hook, Ne.symm hhv, Ne.symm hpv,
+      and_true, and_false, true_and, false_and, ↓reduceIte, eq_self_iff_true, not_false_eq_true,
+      Bool.true_eq_false, Bool.false_eq_true, true_and, and_self] <;>
+    omega
+
+set_option maxHeartbeats 1000000 in
+/-- **v2 cancel settlement.** The maker gets exactly the stored escrow back (as claims if the
+    input is native); the bid is not refunded; the hook's own balances are untouched. -/
+theorem cancel_settlement {cfg : Config} {w w' : World} {sender : Address} {o : Order}
+    (h : cancelOrder cfg w sender o = some w') (h1 : o.owner ≠ cfg.pm) (h2 : o.owner ≠ cfg.hook)
+    (h3 : o.owner ≠ cfg.vault) :
+    (if cfg.isNative o.input
+       then w'.claims o.input o.owner = w.claims o.input o.owner + (w.orders o.key).amountIn
+       else w'.bal o.input o.owner = w.bal o.input o.owner + (w.orders o.key).amountIn)
+    ∧ w'.claims o.input cfg.hook = w.claims o.input cfg.hook - (w.orders o.key).amountIn
+        - (if o.input = numeraire then (w.orders o.key).priorityFee else 0)
+    ∧ w'.claims numeraire o.owner = w.claims numeraire o.owner
+        + (if cfg.isNative o.input ∧ o.input = numeraire then (w.orders o.key).amountIn else 0)
+    ∧ (∀ c, w'.bal c cfg.hook = w.bal c cfg.hook) := by
+  unfold cancelOrder at h
+  split_ifs at h with hg
+  simp only [Option.some.injEq] at h; subst h
+  have hpm_hook := cfg.hook_ne_pm
+  have hhv := cfg.hook_ne_vault
+  have hpv := cfg.vault_ne_pm
+  refine ⟨?_, ?_, ?_, ?_⟩
+  all_goals (try intro c)
+  all_goals
+    (try cases c) <;> cases hz : o.zeroForOne <;> by_cases hn : cfg.native0 = true <;>
+    cases hl : w.hasLiquidity <;>
+    simp only [cancelBody, payOutBody, settleBidBody, Tx.payOut, Tx.take, Config.isNative,
+      Order.output_eq, Order.input_eq, numeraire, hz, hn, hl,
+      hasLiquidity_start, hasLiquidity_transfer, hasLiquidity_mint, hasLiquidity_burn, hasLiquidity_donate,
+      hasLiquidity_poolSwap, hasLiquidity_addDelta, hasLiquidity_setPendingNative, hasLiquidity_deleteOrder,
+      hasLiquidity_setOrder, hasLiquidity_useRouterCancelNonce,
+      Bool.not_true, Bool.not_false, Bool.false_and, Bool.true_and, Bool.false_eq_true, Bool.true_eq_false,
+      bal_mint, bal_burn, bal_donate, bal_addDelta, bal_deleteOrder, bal_start, orders_start,
+      claims_transfer, claims_addDelta, claims_deleteOrder, claims_donate, claims_start,
+      bal_transfer_apply, claims_mint_apply, claims_burn_apply,
+      h1, h2, h3, Ne.symm h1, Ne.symm h2, Ne.symm h3, hpm_hook, hhv, hpv, Ne.symm hpm_hook, Ne.symm hhv,
+      Ne.symm hpv, and_true, and_false, true_and, false_and, ↓reduceIte, eq_self_iff_true,
+      not_false_eq_true, and_self] <;>
+    omega
+
+/-- `NativeClaims.redeem`: the caller's native claims drop by `amount`, the recipient receives
+    `amount` of ETH, nothing else moves. -/
+theorem redeem_settlement {cfg : Config} {w w' : World} {sender : Address} {amount : ℕ} {recipient : Address}
+    (h : redeemNative cfg w sender amount recipient = some w') (hr : recipient ≠ cfg.pm) :
+    w'.claims false sender = w.claims false sender - amount
+    ∧ w'.bal false recipient = w.bal false recipient + amount
+    ∧ w'.orders = w.orders ∧ w'.claimsSupply false = w.claimsSupply false - amount := by
+  unfold redeemNative at h
+  split_ifs at h with hg
+  simp only [Option.some.injEq] at h; subst h
+  refine ⟨?_, ?_, rfl, ?_⟩
+  · simp [Tx.take, claims_burn_apply]
+  · simp only [Tx.take, bal_addDelta, bal_transfer_apply, bal_burn, bal_start, hr, Ne.symm hr, ↓reduceIte,
+      eq_self_iff_true]
+  · simp [Tx.take, Function.update_apply]
+
+end AsyncSwapProtocol.V2
