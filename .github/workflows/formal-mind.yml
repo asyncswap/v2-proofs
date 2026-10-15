@@ -1,0 +1,84 @@
+name: formal-mind bot
+
+# Triggered when a protocol repository pushes (see asyncswap/v2 .github/workflows/proofs-dispatch.yml
+# and formalmind/tools/handle-proofs-dispatch.ts), or by hand.
+on:
+  repository_dispatch:
+    types: [protocol-push]
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: protocol repository (owner/name)
+        required: true
+        default: asyncswap/v2
+      sha:
+        description: commit to reconcile the spec with
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    env:
+      PROTO_REPO: ${{ github.event.client_payload.repo || inputs.repo }}
+      PROTO_SHA: ${{ github.event.client_payload.sha || inputs.sha }}
+      PROTO_MSG: ${{ github.event.client_payload.message || 'manual run' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+      - name: Check out the protocol commit
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.PROTO_REPO }}
+          ref: ${{ env.PROTO_SHA }}
+          path: protocol
+          token: ${{ secrets.PROTOCOL_READ_TOKEN || github.token }}
+      - name: Install elan
+        run: |
+          curl -sSfL https://elan.lean-lang.org/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .lake
+            ~/.cache/mathlib
+          key: lake-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}
+          restore-keys: lake-${{ runner.os }}-
+      - run: lake exe cache get
+      - name: Diff of the protocol commit
+        id: diff
+        run: |
+          cd protocol
+          git fetch --depth=2 origin "$PROTO_SHA" || true
+          git diff --stat HEAD~1 HEAD -- src > ../protocol-diff.txt 2>/dev/null || echo "(no parent)" > ../protocol-diff.txt
+          git diff HEAD~1 HEAD -- src >> ../protocol-diff.txt 2>/dev/null || true
+      - name: Run the formal-mind bot (Claude Code)
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Follow the instructions in .github/formal-mind-prompt.md exactly.
+            PROTO_REPO=${{ env.PROTO_REPO }}
+            PROTO_SHA=${{ env.PROTO_SHA }}
+          claude_args: '--allowedTools "Bash(lake *),Bash(git diff *),Bash(git log *),Read,Edit,Write,Glob,Grep" --max-turns 80'
+      - name: Gate on a clean build
+        run: lake build && ! grep -rn --include='*.lean' -E '\bsorry\b' AsyncSwapSpec AsyncSwapProtocol
+      - name: Open a pull request with the reconciled spec
+        uses: peter-evans/create-pull-request@v6
+        with:
+          base: dev
+          branch: formal-mind/${{ env.PROTO_SHA }}
+          title: "formal-mind: reconcile spec with ${{ env.PROTO_REPO }}@${{ env.PROTO_SHA }}"
+          commit-message: |
+            spec: reconcile with ${{ env.PROTO_REPO }}@${{ env.PROTO_SHA }}
+
+            ${{ env.PROTO_MSG }}
+          body: |
+            Automated reconciliation of the Lean spec with `${{ env.PROTO_REPO }}@${{ env.PROTO_SHA }}`.
+
+            `lake build` passed with no `sorry` before this PR was opened. Review the theorem
+            changes; anything the bot could not prove is listed in `FORMAL_MIND_NOTES.md`.

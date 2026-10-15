@@ -1,0 +1,32 @@
+name: proofs
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    name: lake build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install elan
+        run: |
+          curl -sSfL https://elan.lean-lang.org/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Cache Mathlib and build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            .lake
+            ~/.cache/mathlib
+          key: lake-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}
+          restore-keys: lake-${{ runner.os }}-
+      - name: Fetch Mathlib cache
+        run: lake exe cache get
+      - name: Build all proofs
+        run: lake build
+      - name: Verify no sorry
+        run: |
+          if grep -rn --include='*.lean' -E '\bsorry\b' AsyncSwapSpec AsyncSwapProtocol; then
+            echo "::error::sorry found in proofs"; exit 1; fi
