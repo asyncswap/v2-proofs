@@ -519,4 +519,202 @@ theorem reads_inserted (C : InsertCtx T p leafId branchId) (split : ℕ) :
 
 end Insert
 
+/-! ## Top level: `Tree.insert` refines `Trie.insert` / `PriceIndex.insert` -/
+
+theorem Tree.descendUntil_congr {T T' : Tree} (h : T'.nodes = T.nodes) (p split : ℕ) :
+    ∀ fuel par id, T'.descendUntil p split fuel par id = T.descendUntil p split fuel par id := by
+  intro fuel
+  induction fuel with
+  | zero => intro par id; rfl
+  | succ fuel ih => intro par id; simp only [Tree.descendUntil, h, ih]
+
+section TopLevel
+
+variable {T : Tree} {t : Trie} {p : ℕ}
+
+/-- A present price: `insert` is a no-op reporting `created = false`. -/
+theorem insert_present (h : Repr T t) (hp : p ∈ t.keys) (fuel : ℕ) : T.insert p fuel = (T, false) := by
+  have : T.leaves p ≠ 0 := (h.leaves_mem p hp).1.ne_zero
+  simp [Tree.insert, this]
+
+/-- **Insertion refinement.** A fresh price on a represented trie: `insert` reports
+    `created = true` and stores exactly `Trie.insert`. -/
+theorem insert_refines (h : Repr T t) (hp : p ∉ t.keys) {fuel : ℕ} (hf : t.height ≤ fuel) :
+    (T.insert p fuel).2 = true ∧ Repr (T.insert p fuel).1 (t.insert p) := by
+  have hl0 : T.leaves p = 0 := h.leaves_absent p hp
+  have hroot0 : T.root ≠ 0 := h.reads.ne_zero
+  have hins : t.insert p = t.insertAt p (splitBit p (t.findLeaf p)) := by simp [Trie.insert, hp]
+  simp only [Tree.insert, hl0, ne_eq, not_true_eq_false, ↓reduceIte]
+  -- the leaf allocation
+  rcases hnew1 : T.newNode with ⟨T1, leafId⟩
+  have hspec := newNode_spec h.alloc
+  rw [hnew1] at hspec; dsimp only at hspec
+  obtain ⟨hlne, hlnin, hn1, hr1, hlv1, A1, -, -⟩ := hspec
+  dsimp only
+  set T2 := (T1.setNode leafId { Node.empty with price := p, leaf := true }).setLeaf p leafId with hT2
+  have hT2n : T2.nodes = Function.update T.nodes leafId { Node.empty with price := p, leaf := true } := by
+    show Function.update T1.nodes leafId _ = _; rw [hn1]
+  have hT2r : T2.root = T.root := hr1
+  have hT2l : T2.leaves = Function.update T.leaves p leafId := by
+    show Function.update T1.leaves p leafId = _; rw [hlv1]
+  have hsame2 : ∀ y ∈ idsFrom T T.root t, T2.nodes y = T.nodes y := by
+    intro y hy; rw [hT2n, Function.update_of_ne (fun e => hlnin (by rw [e] at hy; exact hy))]
+  have hreads2 : Reads T2 T.root t := h.reads.mono hsame2
+  have hleafnode : T2.nodes leafId = { Node.empty with price := p, leaf := true } := by rw [hT2n]; simp
+  have A2 : Alloc T2 (leafId :: idsFrom T T.root t) :=
+    ⟨A1.used_le, A1.used_free, A1.free_le, A1.free_ne, A1.free_nodup⟩
+  simp only [hT2r, hroot0, ↓reduceIte]
+  -- the first loop
+  obtain ⟨c, hc_mem, hc_eq, hc_reads⟩ := descendToLeaf_refines hreads2 p fuel hf
+  rw [hc_eq, hc_reads.leaf_fields.2]
+  set split := Nat.log2 (p ^^^ t.findLeaf p) with hsplit
+  -- the second loop and the branch allocation
+  rcases hdesc : T2.descendUntil p split fuel 0 T.root with ⟨parentId, cursor2⟩
+  rcases hnew2 : T2.newNode with ⟨T3, branchId⟩
+  have hspec := newNode_spec A2
+  rw [hnew2] at hspec; dsimp only at hspec
+  obtain ⟨hbne, hbnin, hn3, hr3, hlv3, A3, -, -⟩ := hspec
+  simp only [List.mem_cons, not_or] at hbnin
+  obtain ⟨hbl, hbnin⟩ := hbnin
+  dsimp only
+  refine ⟨trivial, ?_⟩
+  rw [hins]
+  -- Lemma C at the root
+  have C : InsertCtx T3 p leafId branchId :=
+    { leaf_ne_zero := hlne, branch_ne_zero := hbne, leaf_ne_branch := Ne.symm hbl
+      leaf_node := by rw [hn3, hleafnode], leaf_price := by rw [hn3, hleafnode] }
+  have hreads3 : Reads T3 T.root t := hreads2.of_nodes_eq hn3
+  have hids3 : idsFrom T3 T.root t = idsFrom T T.root t := by
+    rw [idsFrom_of_nodes_eq hn3, idsFrom_mono h.reads hsame2]
+  have hdesc3 : T3.descendUntil p split fuel 0 T.root = (parentId, cursor2) := by
+    rw [Tree.descendUntil_congr hn3]; exact hdesc
+  have h0nin : (0 : ℕ) ∉ idsFrom T T.root t := fun h0 => h.reads.ids_ne_zero 0 h0 rfl
+  obtain ⟨hx, hiff, hpm, hreads', hsub, hsup, hlm, hbm, hnd', hpp⟩ :=
+    reads_inserted C split hreads3 (hids3 ▸ h.nodup) (hids3 ▸ hlnin) (hids3 ▸ hbnin) fuel hf 0
+      (by rw [hn3, hsame2 _ (mem_idsFrom_self _ _ _)]; exact h.root_parent) (hids3 ▸ h0nin)
+      (Ne.symm hlne) (Ne.symm hbne) parentId cursor2 hdesc3
+  rw [hids3] at hx hpm hsub hsup
+  set L := T3.link p split leafId branchId parentId cursor2 with hL
+  have hLroot : L.root = (if cursor2 = T.root then branchId else T.root) := by
+    rw [hL, Tree.link_root, hr3, hT2r]
+    by_cases hc : cursor2 = T.root
+    · simp only [hc, eq_self_iff_true, ↓reduceIte, hiff.2 hc]
+    · have : ¬ parentId = 0 := fun e => hc (hiff.1 e)
+      simp only [hc, this, ↓reduceIte]
+  have hLn : ∀ y, y ≠ branchId → (L.nodes y).leaf = (T3.nodes y).leaf ∧ (L.nodes y).price = (T3.nodes y).price :=
+    fun y hy => by rw [hL]; exact Tree.link_leaf_price T3 p split leafId branchId parentId cursor2 hy
+  have hLl : L.leaves = Function.update T.leaves p leafId := by rw [hL, Tree.link_leaves, hlv3, hT2l]
+  have hLf : L.freeIds = T3.freeIds := by rw [hL, Tree.link_freeIds]
+  have hLx : L.nextNodeId = T3.nextNodeId := by rw [hL, Tree.link_nextNodeId]
+  refine
+    { reads := ?_, nodup := ?_, root_parent := ?_, leaves_mem := ?_, leaves_absent := ?_,
+      ids_fresh := ?_, free_fresh := ?_, free_nodup := ?_ }
+  · rw [hLroot]; exact hreads'
+  · rw [hLroot]; exact hnd'
+  · rw [hLroot]; exact hpp
+  · intro q hq
+    rw [hLroot, hLl]
+    rcases (Trie.mem_keys_insertAt p split q t).1 hq with hqt | rfl
+    · have hqp : q ≠ p := fun e => hp (e ▸ hqt)
+      rw [Function.update_of_ne hqp]
+      obtain ⟨hyr, hym⟩ := h.leaves_mem q hqt
+      have hy_br : T.leaves q ≠ branchId := fun e => hbnin (by rw [e] at hym; exact hym)
+      have hy_leaf : T.leaves q ≠ leafId := fun e => hlnin (by rw [e] at hym; exact hym)
+      obtain ⟨e1, e2⟩ := hLn _ hy_br
+      rw [hn3, hsame2 _ hym] at e1 e2
+      refine ⟨Reads.leaf _ q hyr.ne_zero (by rw [e1]; exact hyr.leaf_fields.1) (by rw [e2]; exact hyr.leaf_fields.2),
+        hsup _ hym⟩
+    · rw [Function.update_self]
+      obtain ⟨e1, e2⟩ := hLn leafId (Ne.symm hbl)
+      rw [hn3, hleafnode] at e1 e2
+      exact ⟨Reads.leaf leafId q hlne (by rw [e1]) (by rw [e2]), hlm⟩
+  · intro q hq
+    rw [hLl]
+    have hqp : q ≠ p := fun e => hq ((Trie.mem_keys_insertAt p split q t).2 (Or.inr e))
+    rw [Function.update_of_ne hqp]
+    exact h.leaves_absent q (fun hqt => hq ((Trie.mem_keys_insertAt p split q t).2 (Or.inl hqt)))
+  · intro id hid
+    rw [hLroot] at hid
+    rw [hLx, hLf]
+    have : id ∈ branchId :: leafId :: idsFrom T T.root t := by
+      simp only [List.mem_cons]
+      rcases hsub id hid with h1 | h1 | h1
+      · exact Or.inr (Or.inr h1)
+      · exact Or.inr (Or.inl h1)
+      · exact Or.inl h1
+    exact ⟨A3.used_le id this, A3.used_free id this⟩
+  · intro id hid
+    rw [hLf] at hid; rw [hLx]
+    exact ⟨A3.free_le id hid, A3.free_ne id hid⟩
+  · rw [hLf]; exact A3.free_nodup
+
+/-- Inserting into the empty storage: the new leaf becomes the root. -/
+theorem insert_empty (h : ReprIx T none) (p fuel : ℕ) :
+    (T.insert p fuel).2 = true ∧ Repr (T.insert p fuel).1 (Trie.leaf p) := by
+  obtain ⟨hroot, hleaves, hfree, hnodup⟩ := h
+  have A : Alloc T [] :=
+    ⟨by simp, by simp, fun id hid => (hfree id hid).1, fun id hid => (hfree id hid).2, hnodup⟩
+  simp only [Tree.insert, hleaves p, ne_eq, not_true_eq_false, ↓reduceIte]
+  rcases hnew1 : T.newNode with ⟨T1, leafId⟩
+  have hspec := newNode_spec A
+  rw [hnew1] at hspec; dsimp only at hspec
+  obtain ⟨hlne, -, hn1, hr1, hlv1, A1, -, -⟩ := hspec
+  dsimp only
+  set T2 := (T1.setNode leafId { Node.empty with price := p, leaf := true }).setLeaf p leafId with hT2
+  have hT2r : T2.root = 0 := by rw [← hroot]; exact hr1
+  have hT2n : T2.nodes leafId = { Node.empty with price := p, leaf := true } := by
+    show Function.update T1.nodes leafId _ leafId = _; simp
+  have hT2l : T2.leaves = Function.update T.leaves p leafId := by
+    show Function.update T1.leaves p leafId = _; rw [hlv1]
+  simp only [hT2r, ↓reduceIte]
+  refine ⟨trivial, ?_⟩
+  refine
+    { reads := ?_, nodup := ?_, root_parent := ?_, leaves_mem := ?_, leaves_absent := ?_,
+      ids_fresh := ?_, free_fresh := ?_, free_nodup := ?_ }
+  · exact Reads.leaf leafId p hlne (by show (T2.nodes leafId).leaf = true; rw [hT2n])
+      (by show (T2.nodes leafId).price = p; rw [hT2n])
+  · show (idsFrom _ leafId (Trie.leaf p)).Nodup; simp [idsFrom]
+  · show (T2.nodes leafId).parent = 0; rw [hT2n]; rfl
+  · intro q hq
+    simp only [Trie.keys, Finset.mem_singleton] at hq; subst hq
+    show Reads _ (T2.leaves q) (Trie.leaf q) ∧ T2.leaves q ∈ idsFrom _ leafId (Trie.leaf q)
+    rw [hT2l, Function.update_self]
+    exact ⟨Reads.leaf leafId q hlne (by show (T2.nodes leafId).leaf = true; rw [hT2n])
+      (by show (T2.nodes leafId).price = q; rw [hT2n]), by simp [idsFrom]⟩
+  · intro q hq
+    simp only [Trie.keys, Finset.mem_singleton] at hq
+    show T2.leaves q = 0
+    rw [hT2l, Function.update_of_ne hq]; exact hleaves q
+  · intro id hid
+    simp only [idsFrom, List.mem_singleton] at hid; subst hid
+    exact ⟨A1.used_le _ (by simp), A1.used_free _ (by simp)⟩
+  · intro id hid
+    exact ⟨A1.free_le id hid, A1.free_ne id hid⟩
+  · exact A1.free_nodup
+
+end TopLevel
+
+/-- Height of an optional trie, the fuel `Tree.insert` needs. -/
+def PriceIndex.height : PriceIndex → ℕ
+  | none => 0
+  | some t => t.height
+
+/-- **`PriceIndex.insert` refinement.** On any represented index, the contract's `insert` reports
+    `created` exactly when the price was absent and stores exactly `PriceIndex.insert`. -/
+theorem PriceIndex.insert_refines {T : Tree} {ix : PriceIndex} (h : ReprIx T ix) {p fuel : ℕ}
+    (hf : ix.height ≤ fuel) :
+    (T.insert p fuel).2 = decide (p ∉ ix.keys) ∧ ReprIx (T.insert p fuel).1 (ix.insert p) := by
+  cases ix with
+  | none =>
+    obtain ⟨h1, h2⟩ := AsyncSwap.insert_empty h p fuel
+    exact ⟨by rw [h1]; simp [PriceIndex.keys], h2⟩
+  | some t =>
+    by_cases hp : p ∈ t.keys
+    · rw [AsyncSwap.insert_present h hp fuel]
+      refine ⟨by simp [PriceIndex.keys, hp], ?_⟩
+      show Repr T (t.insert p)
+      rw [show t.insert p = t by simp [Trie.insert, hp]]; exact h
+    · obtain ⟨h1, h2⟩ := AsyncSwap.insert_refines h hp hf
+      exact ⟨by rw [h1]; simp [PriceIndex.keys, hp], h2⟩
+
 end AsyncSwap
