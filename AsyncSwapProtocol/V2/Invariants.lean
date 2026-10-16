@@ -21,6 +21,9 @@ def escrowOf (c : Currency) (k : OrderKey) (i : OrderInfo) : ℤ :=
 
 def owed (c : Currency) (w : World) : ℤ := ∑ k ∈ w.openKeys, escrowOf c k (w.orders k)
 
+theorem Order.key_input (o : Order) : o.key.input = !o.zeroForOne := rfl
+theorem Order.key_output (o : Order) : o.key.output = o.zeroForOne := rfl
+
 structure Escrow (cfg : Config) (w : World) : Prop where
   claims : ∀ c, w.claims c cfg.hook = owed c w
   wf : ∀ k ∈ w.openKeys, 0 < (w.orders k).amountIn
@@ -133,34 +136,66 @@ theorem escrow_reduceSideBody (cfg : Config) (t : Tx) (k : OrderKey) (cp : Addre
     ∀ c, (reduceSideBody cfg t k cp used received).w.claims c cfg.hook
           = owed c (reduceSideBody cfg t k cp used received).w := by
   intro c
-  have hin := AsyncSwap.Order.reduce_amountIn (OrderInfo.toSpec k (t.w.orders k)) ⟨used, received⟩ hused
-  have hfee := AsyncSwap.Order.reduce_priorityFee (OrderInfo.toSpec k (t.w.orders k)) ⟨used, received⟩ hused
-  have hd : (OrderInfo.toSpec k (t.w.orders k)).donatedFee ⟨used, received⟩ ≤ (t.w.orders k).priorityFee :=
-    AsyncSwap.mulDiv_le_of_le hused
   have hesc' : (t.w.orders k).escrowed = false → (t.w.orders k).priorityFee = 0 := by
     intro h; by_contra hne; have := hesc hne; simp [h] at this
   have hc := hclaims c
   simp only [reduceSideBody]
-  split_ifs with hclosed hz
-  · rw [owed_deleteOrder _ _ _ (by simpa [openKeys_settleBidBody, openKeys_payOut, payOutBody] using hk)]
-    simp only [orders_settleBidBody, orders_payOutBody, claims_hook_settleBidBody,
-      claims_hook_payOutBody cfg _ _ _ _ hcp, owed_settleBidBody, owed_payOutBody, hc]
-    simp only [OrderInfo.toSpec] at hin hfee hd
-    unfold escrowOf
-    split_ifs <;> (try subst_vars) <;> (try simp_all) <;> omega
-  · rw [owed_deleteOrder _ _ _ (by simpa [openKeys_settleBidBody, openKeys_payOut, payOutBody] using hk)]
-    simp only [orders_settleBidBody, orders_payOutBody, claims_hook_settleBidBody,
-      claims_hook_payOutBody cfg _ _ _ _ hcp, claims_hook_payOutBody cfg _ _ _ _ hown,
-      owed_settleBidBody, owed_payOutBody, hc]
-    simp only [OrderInfo.toSpec] at hin hfee hd
-    unfold escrowOf
-    split_ifs <;> (try subst_vars) <;> (try simp_all) <;> omega
-  · rw [owed_setOrder _ _ _ _ (by simpa [openKeys_settleBidBody, openKeys_payOut, payOutBody] using hk)]
-    simp only [orders_settleBidBody, orders_payOutBody, claims_hook_settleBidBody,
-      claims_hook_payOutBody cfg _ _ _ _ hcp, owed_settleBidBody, owed_payOutBody, hc]
-    simp only [OrderInfo.toSpec] at hin hfee hd
-    unfold escrowOf
-    split_ifs <;> (try subst_vars) <;> (try simp_all) <;> omega
+  -- name the reduced record and the bid share, and the two accounting facts about them
+  have hin : ((OrderInfo.toSpec k (t.w.orders k)).reduce ⟨used, received⟩).amountIn + used
+      = (t.w.orders k).amountIn :=
+    AsyncSwap.Order.reduce_amountIn (OrderInfo.toSpec k (t.w.orders k)) ⟨used, received⟩ hused
+  have hfee : ((OrderInfo.toSpec k (t.w.orders k)).reduce ⟨used, received⟩).priorityFee
+      + (OrderInfo.toSpec k (t.w.orders k)).donatedFee ⟨used, received⟩ = (t.w.orders k).priorityFee :=
+    AsyncSwap.Order.reduce_priorityFee (OrderInfo.toSpec k (t.w.orders k)) ⟨used, received⟩ hused
+  have hd : (OrderInfo.toSpec k (t.w.orders k)).donatedFee ⟨used, received⟩ ≤ (t.w.orders k).priorityFee :=
+    AsyncSwap.mulDiv_le_of_le hused
+  generalize hR : (OrderInfo.toSpec k (t.w.orders k)).reduce ⟨used, received⟩ = r at hin hfee ⊢
+  generalize hF : (OrderInfo.toSpec k (t.w.orders k)).donatedFee ⟨used, received⟩ = fb at hfee hd ⊢
+  have hmem : ∀ (t' : Tx), t'.w.openKeys = t.w.openKeys → k ∈ t'.w.openKeys := fun _ h => h ▸ hk
+  cases he : (t.w.orders k).escrowed with
+  | false =>
+    have hf0 := hesc' he
+    split_ifs with hclosed hz
+    · rw [owed_deleteOrder _ _ _ (hmem _ (by simp [openKeys_settleBidBody, openKeys_payOut, payOutBody]))]
+      simp only [claims_deleteOrder, claims_setOrder, orders_settleBidBody, orders_payOutBody, claims_hook_settleBidBody,
+        claims_hook_payOutBody cfg _ _ _ _ hcp, owed_settleBidBody, owed_payOutBody, hc, hf0]
+      unfold escrowOf
+      simp only [he, Bool.false_eq_true, ↓reduceIte, add_zero]
+      split_ifs <;> (try subst_vars) <;> first | omega | simp_all
+    · rw [owed_deleteOrder _ _ _ (hmem _ (by simp [openKeys_settleBidBody, openKeys_payOut, payOutBody]))]
+      simp only [claims_deleteOrder, claims_setOrder, orders_settleBidBody, orders_payOutBody, claims_hook_settleBidBody,
+        claims_hook_payOutBody cfg _ _ _ _ hcp, claims_hook_payOutBody cfg _ _ _ _ hown,
+        owed_settleBidBody, owed_payOutBody, hc, hf0]
+      unfold escrowOf
+      simp only [he, Bool.false_eq_true, ↓reduceIte, add_zero]
+      split_ifs <;> (try subst_vars) <;> first | omega | simp_all
+    · rw [owed_setOrder _ _ _ _ (hmem _ (by simp [openKeys_settleBidBody, openKeys_payOut, payOutBody]))]
+      simp only [claims_deleteOrder, claims_setOrder, orders_settleBidBody, orders_payOutBody, claims_hook_settleBidBody,
+        claims_hook_payOutBody cfg _ _ _ _ hcp, owed_settleBidBody, owed_payOutBody, hc, hf0]
+      unfold escrowOf
+      simp only [he, Bool.false_eq_true, ↓reduceIte, add_zero]
+      split_ifs <;> (try subst_vars) <;> first | omega | simp_all
+  | true =>
+    split_ifs with hclosed hz
+    · rw [owed_deleteOrder _ _ _ (hmem _ (by simp [openKeys_settleBidBody, openKeys_payOut, payOutBody]))]
+      simp only [claims_deleteOrder, claims_setOrder, orders_settleBidBody, orders_payOutBody, claims_hook_settleBidBody,
+        claims_hook_payOutBody cfg _ _ _ _ hcp, owed_settleBidBody, owed_payOutBody, hc]
+      unfold escrowOf
+      simp only [he, ↓reduceIte]
+      split_ifs <;> (try subst_vars) <;> first | omega | simp_all
+    · rw [owed_deleteOrder _ _ _ (hmem _ (by simp [openKeys_settleBidBody, openKeys_payOut, payOutBody]))]
+      simp only [claims_deleteOrder, claims_setOrder, orders_settleBidBody, orders_payOutBody, claims_hook_settleBidBody,
+        claims_hook_payOutBody cfg _ _ _ _ hcp, claims_hook_payOutBody cfg _ _ _ _ hown,
+        owed_settleBidBody, owed_payOutBody, hc]
+      unfold escrowOf
+      simp only [he, ↓reduceIte]
+      split_ifs <;> (try subst_vars) <;> first | omega | simp_all
+    · rw [owed_setOrder _ _ _ _ (hmem _ (by simp [openKeys_settleBidBody, openKeys_payOut, payOutBody]))]
+      simp only [claims_deleteOrder, claims_setOrder, orders_settleBidBody, orders_payOutBody, claims_hook_settleBidBody,
+        claims_hook_payOutBody cfg _ _ _ _ hcp, owed_settleBidBody, owed_payOutBody, hc]
+      unfold escrowOf
+      simp only [he, ↓reduceIte]
+      split_ifs <;> (try subst_vars) <;> first | omega | simp_all
 
 theorem wf_reduceSideBody (cfg : Config) (t : Tx) (k : OrderKey) (cp : Address) (used received : ℕ)
     (hwf : ∀ k' ∈ t.w.openKeys, 0 < (t.w.orders k').amountIn) :
@@ -182,7 +217,7 @@ theorem wf_reduceSideBody (cfg : Config) (t : Tx) (k : OrderKey) (cp : Address) 
   · simp only [openKeys_setOrder, openKeys_settleBidBody, openKeys_payOut, payOutBody, openKeys_burn] at hk'
     simp only [orders_setOrder, orders_settleBidBody, orders_payOutBody, Function.update_apply]
     split_ifs with he
-    · simp only [not_or] at hclosed; omega
+    · simp only [not_or] at hclosed; dsimp only; omega
     · exact hwf _ hk'
 
 /-- Escrow is preserved by one admissible match. -/
@@ -202,18 +237,22 @@ theorem escrow_matchPairBody (cfg : Config) (t : Tx) (m : MatchChoice)
   have hQ := hsound.quote_le_buy_escrow
   simp only [OrderInfo.toSpec] at hA hQ
   simp only [matchPairBody]
+  set A := (AsyncSwap.matchAmounts (OrderInfo.toSpec m.sellKey (t.w.orders m.sellKey))
+      (OrderInfo.toSpec m.buyKey (t.w.orders m.buyKey)) m.restingBuy).assetAmount with hAdef
+  set Q := (AsyncSwap.matchAmounts (OrderInfo.toSpec m.sellKey (t.w.orders m.sellKey))
+      (OrderInfo.toSpec m.buyKey (t.w.orders m.buyKey)) m.restingBuy).quoteAmount with hQdef
   -- after the sell side, the buy record and membership are unchanged
-  have hbuy' : m.buyKey ∈ (reduceSideBody cfg t m.sellKey m.buyKey.owner _ _).w.openKeys := by
+  have hbuy' : m.buyKey ∈ (reduceSideBody cfg t m.sellKey m.buyKey.owner A Q).w.openKeys := by
     simp only [reduceSideBody]; split_ifs <;>
       simp [Tx.deleteOrder, Tx.setOrder, openKeys_settleBidBody, openKeys_payOut, payOutBody, hbuy, hne]
-  have hordB := orders_reduceSideBody_ne cfg t m.sellKey m.buyKey m.buyKey.owner _ _ hne
-  have h1 := escrow_reduceSideBody cfg t m.sellKey m.buyKey.owner _ _ hsell (hE.owner_ne_hook _ hbuy)
+  have hordB := orders_reduceSideBody_ne cfg t m.sellKey m.buyKey m.buyKey.owner A Q hne
+  have h1 := escrow_reduceSideBody cfg t m.sellKey m.buyKey.owner A Q hsell (hE.owner_ne_hook _ hbuy)
     (hE.owner_ne_hook _ hsell) hA hescS hE.claims
-  have hwf1 := wf_reduceSideBody cfg t m.sellKey m.buyKey.owner _ _ hE.wf
+  have hwf1 := wf_reduceSideBody cfg t m.sellKey m.buyKey.owner A Q hE.wf
   refine ⟨?_, ?_, ?_, ?_⟩
-  · exact escrow_reduceSideBody cfg _ m.buyKey m.sellKey.owner _ _ hbuy' (hE.owner_ne_hook _ hsell)
+  · exact escrow_reduceSideBody cfg _ m.buyKey m.sellKey.owner Q A hbuy' (hE.owner_ne_hook _ hsell)
       (hE.owner_ne_hook _ hbuy) (by rw [hordB]; exact hQ) (by rw [hordB]; exact hescB) h1
-  · exact wf_reduceSideBody cfg _ m.buyKey m.sellKey.owner _ _ hwf1
+  · exact wf_reduceSideBody cfg _ m.buyKey m.sellKey.owner Q A hwf1
   · intro k hk
     exact hE.owner_ne_hook k
       (openKeys_reduceSideBody_subset cfg _ _ _ _ _ (openKeys_reduceSideBody_subset cfg _ _ _ _ _ hk))
@@ -245,12 +284,16 @@ theorem escrow_closeBody (cfg : Config) (t : Tx) (o : Order) (hE : Escrow cfg t.
   refine ⟨?_, ?_, ?_, ?_⟩
   · intro c
     have hc := hE.claims c
+    have hcl := hclaims c
     have hsum : owed c t'.w = owed c t.w - escrowOf c o.key (t.w.orders o.key) := by
       simp only [owed, horders, hopen]; exact sum_erase_update (fun x j => escrowOf c x j) _ _ _ _ hk
-    rw [hclaims c, hsum, hc]
+    rw [hcl, hsum, hc]
     unfold escrowOf
-    simp only [Order.input]
-    split_ifs <;> (try subst_vars) <;> (try simp_all) <;> omega
+    cases he : (t.w.orders o.key).escrowed <;> (try have hf0 := hesc' he) <;>
+      cases c <;> cases hz : o.zeroForOne <;>
+      simp only [Order.input_eq, Order.key_input, numeraire, hz, Bool.not_true, Bool.not_false,
+        Bool.false_eq_true, Bool.true_eq_false, ↓reduceIte, add_zero, sub_zero] <;>
+      omega
   · intro k hk'
     rw [hopen] at hk'
     rw [horders, Function.update_of_ne (Finset.ne_of_mem_erase hk')]
@@ -278,46 +321,53 @@ theorem step_escrow {cfg : Config} {w w' : World} {a : Action} (hE : Escrow cfg 
       simp only [swapBody] at hbd
       refine escrow_matchLoop cfg ms _ t ?_ hbd
       -- the state after create + bid escrow satisfies Escrow
-      have hfresh : o.key ∉ w.openKeys := fun hin => by
-        have := hE.wf _ hin; have := hg.1.2.2.2.2.2.2.2.2.2.1; omega
+      obtain ⟨_, _, _, _, _, _, _, _, hpos, _, _, hzero, _⟩ := hg.1
+      have hfresh : o.key ∉ w.openKeys := fun hin => by have := hE.wf _ hin; omega
       have hrh := cfg.router_ne_hook
-      -- generic: createBody then priorityFeeBody from any Tx whose world satisfies Escrow
       have key : ∀ (t0 : Tx), Escrow cfg t0.w → t0.w.orders = w.orders → t0.w.openKeys = w.openKeys →
           ∀ payer, Escrow cfg (priorityFeeBody cfg (createBody cfg t0 o payer) o).w := by
         intro t0 hE0 ho0 hk0 payer
         have hfresh0 : o.key ∉ t0.w.openKeys := by rw [hk0]; exact hfresh
+        have hfresh0' : o.key ∉ (t0.mint o.input cfg.hook o.amountIn cfg.hook).w.openKeys := hfresh0
         refine ⟨?_, ?_, ?_, ?_⟩
         · intro c
           have hc := hE0.claims c
           simp only [priorityFeeBody]
           split_ifs with hf
-          · simp only [createBody, Tx.settle, Tx.accountSwap, claims_addDelta, claims_transfer,
-              claims_createOrder, claims_mint_apply, owed_settle, owed_accountSwap, owed_transfer,
-              owed_addDelta, owed_createOrder c _ _ _ hfresh0, owed_mint, hc]
-            unfold escrowOf
-            simp only [Order.input, hf]
-            split_ifs <;> (try subst_vars) <;> (try simp_all) <;> omega
-          · rw [owed_setOrder _ _ _ _ (by simp [createBody, hfresh0])]
+          · have hdec : decide (o.priorityFee = 0) = true := by simp [hf]
             simp only [createBody, Tx.settle, Tx.accountSwap, claims_addDelta, claims_transfer,
-              claims_createOrder, claims_mint_apply, orders_createOrder, orders_mint, orders_accountSwap,
-              orders_settle, orders_addDelta, orders_transfer, Function.update_self, owed_settle,
-              owed_accountSwap, owed_transfer, owed_addDelta, owed_createOrder c _ _ _ hfresh0, owed_mint, hc]
+              claims_createOrder, claims_mint_apply, owed_settle, owed_accountSwap, owed_transfer,
+              owed_addDelta, owed_createOrder c _ _ _ hfresh0', owed_mint, hc, hdec, hf]
             unfold escrowOf
-            simp only [Order.input, hf, decide_eq_true_eq]
-            split_ifs <;> (try subst_vars) <;> (try simp_all) <;> omega
+            cases c <;> cases hz : o.zeroForOne <;>
+              simp only [Order.input_eq, Order.key_input, numeraire, hz, Bool.not_true, Bool.not_false,
+                Bool.false_eq_true, Bool.true_eq_false, ↓reduceIte, Nat.cast_zero, add_zero] <;> omega
+          · have hdec : decide (o.priorityFee = 0) = false := by simp [hf]
+            have hmem' : o.key ∈ (((createBody cfg t0 o payer).settle cfg numeraire o.owner cfg.hook o.priorityFee).mint
+                numeraire cfg.hook o.priorityFee cfg.hook).w.openKeys := by simp [createBody]
+            rw [owed_setOrder _ _ _ _ hmem']
+            simp only [createBody, Tx.settle, Tx.accountSwap, claims_setOrder, claims_addDelta, claims_transfer,
+              claims_createOrder, claims_mint_apply, orders_createOrder, orders_mint, orders_accountSwap,
+              orders_addDelta, orders_transfer, Function.update_self, owed_settle,
+              owed_accountSwap, owed_transfer, owed_addDelta, owed_createOrder c _ _ _ hfresh0', owed_mint,
+              hc, hdec]
+            unfold escrowOf
+            cases c <;> cases hz : o.zeroForOne <;>
+              simp only [Order.input_eq, Order.key_input, numeraire, hz, Bool.not_true, Bool.not_false,
+                Bool.false_eq_true, Bool.true_eq_false, ↓reduceIte, add_zero] <;> omega
         · intro k hk
           simp only [openKeys_priorityFeeBody, openKeys_createBody, Finset.mem_insert] at hk
-          have hpos : 0 < o.amountIn := hg.1.2.2.2.2.2.2.2.1
           simp only [priorityFeeBody]
-          split_ifs <;> simp only [orders_setOrder, orders_createBody, Function.update_apply]
+          split_ifs <;> simp only [orders_setOrder, orders_createBody, orders_mint, orders_addDelta,
+            orders_transfer, orders_settle, orders_accountSwap, Function.update_apply]
           · rcases hk with rfl | hk
             · simp [hpos]
-            · rw [if_neg (ne_of_mem_of_not_mem hk hfresh0)]; exact hE0.wf k hk
+            · (try rw [if_neg (ne_of_mem_of_not_mem hk hfresh0)]); exact hE0.wf k hk
           · split_ifs with he
             · subst he; simp [hpos]
             · rcases hk with rfl | hk
               · exact absurd rfl he
-              · rw [if_neg he]; exact hE0.wf k hk
+              · (try rw [if_neg he]); exact hE0.wf k hk
         · intro k hk
           simp only [openKeys_priorityFeeBody, openKeys_createBody, Finset.mem_insert] at hk
           rcases hk with rfl | hk
@@ -345,15 +395,22 @@ theorem step_escrow {cfg : Config} {w w' : World} {a : Action} (hE : Escrow cfg 
     split_ifs at h with hg
     simp only [Option.some.injEq] at h; subst h
     obtain ⟨_, _, _, _, hesc, hk⟩ := hg.1
-    have hoh := hE.owner_ne_hook _ hk
+    have hoh : o.owner ≠ cfg.hook := hE.owner_ne_hook _ hk
     have hhv := cfg.hook_ne_vault
     refine escrow_closeBody cfg (Tx.start w) o hE hk hesc _ ?_ ?_ ?_
     · intro c
       simp only [fillBody, claims_setPendingNative, claims_deleteOrder, claims_hook_settleBidBody,
         claims_hook_payOutBody cfg _ _ _ _ hs, claims_mint_apply, claims_hook_payOut cfg _ _ _ _ _ hoh,
-        claims_settle, claims_transfer, claims_start]
-      split_ifs <;> (try subst_vars) <;> (try simp_all) <;> omega
-    · exact fill_orders (by unfold fillOrder; rw [if_pos hg])
+        claims_settle, claims_transfer, claims_start, orders_start]
+      cases c <;> cases hz : o.zeroForOne <;> by_cases hn : cfg.native0 = true <;>
+        simp only [Order.input_eq, Order.output_eq, Order.key_input, Order.key_output, numeraire, hz,
+          Config.isNative, hn, hhv, Ne.symm hhv, Bool.not_true, Bool.not_false, Bool.false_and, Bool.true_and,
+          Bool.false_eq_true, Bool.true_eq_false, ↓reduceIte, add_zero, sub_zero,
+          claims_settle, claims_transfer, claims_setPendingNative, claims_start] <;>
+        (try split_ifs) <;> omega
+    · simp only [fillBody, orders_setPendingNative, orders_deleteOrder, orders_settleBidBody, orders_payOutBody,
+        orders_mint, orders_payOut, orders_settle, orders_transfer, orders_start]
+      split_ifs <;> rfl
     · simp only [fillBody, openKeys_setPendingNative, openKeys_deleteOrder, openKeys_settleBidBody,
         openKeys_payOut, payOutBody, openKeys_burn, openKeys_mint, openKeys_settle, openKeys_transfer,
         openKeys_start]
@@ -363,7 +420,7 @@ theorem step_escrow {cfg : Config} {w w' : World} {a : Action} (hE : Escrow cfg 
     split_ifs at h with hg
     simp only [Option.some.injEq] at h; subst h
     obtain ⟨_, _, hesc, hk⟩ := hg.2.1
-    have hoh := hE.owner_ne_hook _ hk
+    have hoh : o.owner ≠ cfg.hook := hE.owner_ne_hook _ hk
     refine escrow_closeBody cfg (Tx.start w) o hE hk hesc _ ?_ ?_ ?_
     · intro c
       simp only [cancelBody, claims_deleteOrder, claims_hook_settleBidBody, claims_hook_payOutBody cfg _ _ _ _ hoh,
@@ -375,7 +432,7 @@ theorem step_escrow {cfg : Config} {w w' : World} {a : Action} (hE : Escrow cfg 
     split_ifs at h with hg
     simp only [Option.some.injEq] at h; subst h
     obtain ⟨_, _, hesc, hk⟩ := hg.1.2.2.2
-    have hoh := hE.owner_ne_hook _ hk
+    have hoh : o.owner ≠ cfg.hook := hE.owner_ne_hook _ hk
     refine escrow_closeBody cfg (Tx.start w) o hE hk hesc _ ?_ ?_ ?_
     · intro c
       simp only [cancelBody, claims_deleteOrder, claims_hook_settleBidBody, claims_hook_payOutBody cfg _ _ _ _ hoh,
@@ -387,12 +444,15 @@ theorem step_escrow {cfg : Config} {w w' : World} {a : Action} (hE : Escrow cfg 
     split_ifs at h with hg
     simp only [Option.some.injEq] at h; subst h
     obtain ⟨hk, _, _, _, _, hesc⟩ := hg.1
-    have hoh := hE.owner_ne_hook _ hk
+    have hoh : o.owner ≠ cfg.hook := hE.owner_ne_hook _ hk
     refine escrow_closeBody cfg (Tx.start w) o hE hk hesc _ ?_ ?_ ?_
     · intro c
       simp only [liquidityFillBody, claims_deleteOrder, claims_hook_settleBidBody,
-        claims_hook_payOut cfg _ _ _ _ _ hoh, claims_poolSwap, claims_burn_apply, claims_start]
-      split_ifs <;> (try subst_vars) <;> (try simp_all) <;> omega
+        claims_hook_payOut cfg _ _ _ _ _ hoh, claims_poolSwap, claims_burn_apply, claims_start, orders_start]
+      cases c <;> cases hz : o.zeroForOne <;>
+        simp only [Order.input_eq, Order.output_eq, Order.key_input, Order.key_output, numeraire, hz,
+          Bool.not_true, Bool.not_false, Bool.false_eq_true, Bool.true_eq_false, ↓reduceIte, add_zero,
+          sub_zero] <;> split_ifs <;> omega
     · simp [liquidityFillBody, orders_settleBidBody, Tx.payOut]; split_ifs <;> rfl
     · simp [liquidityFillBody, openKeys_settleBidBody, Tx.payOut]; split_ifs <;> rfl
   | redeemNative s n r =>
@@ -401,9 +461,9 @@ theorem step_escrow {cfg : Config} {w w' : World} {a : Action} (hE : Escrow cfg 
     split_ifs at h; simp only [Option.some.injEq] at h; subst h
     refine ⟨?_, hE.wf, hE.owner_ne_hook, hE.owner_ne_pm⟩
     intro c
-    simp only [Tx.take, claims_addDelta, claims_transfer, claims_burn_apply, owed_take, owed_burn, owed_start,
-      claims_start, hs, Ne.symm hs]
-    split_ifs <;> simp_all [hE.claims c]
+    simp only [Tx.take, claims_addDelta, claims_transfer, claims_burn_apply, owed_addDelta, owed_transfer,
+      owed_burn, owed_start, claims_start, Ne.symm hs, ↓reduceIte]
+    split_ifs <;> (try subst_vars) <;> exact hE.claims _
   | updatePrice s o m =>
     simp only [step, updatePrice] at h
     split_ifs at h with hg; simp only [Option.some.injEq] at h; subst h
@@ -411,8 +471,10 @@ theorem step_escrow {cfg : Config} {w w' : World} {a : Action} (hE : Escrow cfg 
     · intro c
       have hk : o.key ∈ w.openKeys := hg.2.2.2
       rw [owed_setOrder _ _ _ _ hk]
-      simp only [claims_start, orders_start, hE.claims c]
-      unfold escrowOf; simp
+      simp only [claims_setOrder, claims_start, orders_start, owed_start, hE.claims c]
+      unfold escrowOf
+      (try dsimp only)
+      split_ifs <;> omega
     · intro k hk
       simp only [Tx.setOrder, Function.update_apply]
       split_ifs with he
