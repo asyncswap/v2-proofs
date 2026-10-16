@@ -12,12 +12,13 @@ on:
         required: true
         default: asyncswap/v2
       sha:
-        description: commit to reconcile the spec with
+        description: full 40-character commit SHA to reconcile the spec with
         required: true
 
 permissions:
   contents: write
   pull-requests: write
+  id-token: write
 
 jobs:
   reconcile:
@@ -60,6 +61,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
           prompt: |
             Follow the instructions in .github/formal-mind-prompt.md exactly.
             PROTO_REPO=${{ env.PROTO_REPO }}
