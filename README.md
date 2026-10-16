@@ -16,7 +16,7 @@ lake exe cache get   # Mathlib build cache
 lake build
 ```
 
-CI runs `lake build` on every push and pull request (`.github/workflows/lean.yml`).
+CI runs `lake build` only on pushes to `main` (`.github/workflows/lean.yml`); pull requests are reviewed, not built.
 Pushes to the protocol repositories trigger the formal-mind bot (`.github/workflows/formal-mind.yml`),
 which updates the spec for the new commit and opens a pull request here.
 
@@ -69,6 +69,3 @@ this repository should be read against them; change them here first if the proto
 4. **Bounds** (decision 2): overflow-freedom theorems per entry point.
 5. **Radix tree refinement** (decision 4): pointer-level `RadixPriceTree` ≈ functional trie.
 6. **Hashing model** (decision 4): EIP-712 / Permit2 struct hashes and witness binding.
-7. **CI secrets to set** (one-time): `ANTHROPIC_API_KEY` in `asyncswap/v2-proofs`;
-   `PROOFS_DISPATCH_TOKEN` in `asyncswap/v2`; `GITHUB_WEBHOOK_SECRET` and
-   `GITHUB_DISPATCH_TOKEN` on the Cloudflare Worker `formalmind-webhook`.
