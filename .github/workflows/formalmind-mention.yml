@@ -1,9 +1,13 @@
 name: "@formalmind"
 
-# Tag @formalmind in an issue, pull request, review or comment to summon the bot. It reads the
-# thread, answers as formalmind[bot] with ordinary comments (code blocks, permalinks, inline
-# review comments) and, on a pull request, can push commits to the PR branch. How it talks and
-# works is described in .github/formalmind-mention.md.
+# Tag @formalmind in an issue, pull request, review or comment to summon the bot.
+#
+# Two jobs. `triage` runs in seconds: it reacts 👀 to the message, asks the model whether this
+# is chat, a question that needs the repo (read), or work that needs the Lean toolchain
+# (prove), and answers chat itself right away. `work` runs only for read and prove: it checks
+# out the PR branch when there is one, installs Lean only for prove, and runs the bot, which
+# reads the thread with gh and posts as formalmind[bot] (code blocks, blob permalinks, inline
+# review comments, commits on a PR). Voice and rules live in .github/formalmind-mention.md.
 on:
   issue_comment:
     types: [created]
@@ -21,7 +25,7 @@ permissions:
   id-token: write
 
 jobs:
-  formalmind:
+  triage:
     # Only humans summon the bot: its own replies never re-trigger this workflow.
     if: |
       github.event.sender.type == 'User' && (
@@ -32,10 +36,14 @@ jobs:
     runs-on: ubuntu-latest
     env:
       FORMALMIND_APP_ID: ${{ secrets.FORMALMIND_APP_ID }}
+    outputs:
+      mode: ${{ steps.classify.outputs.mode }}
+      number: ${{ steps.ctx.outputs.number }}
+      kind: ${{ steps.ctx.outputs.kind }}
+      trigger: ${{ steps.ctx.outputs.trigger }}
+      author: ${{ steps.ctx.outputs.author }}
+      react_url: ${{ steps.ctx.outputs.react_url }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - name: formalmind App token (comments, commits and PRs appear as formalmind[bot])
         id: app
         if: ${{ env.FORMALMIND_APP_ID != '' }}
@@ -43,7 +51,7 @@ jobs:
         with:
           app-id: ${{ secrets.FORMALMIND_APP_ID }}
           private-key: ${{ secrets.FORMALMIND_APP_PRIVATE_KEY }}
-      - name: Work out where we were summoned and check out the PR branch if there is one
+      - name: Work out where we were summoned and react 👀
         id: ctx
         env:
           GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
@@ -74,10 +82,7 @@ jobs:
           esac
           # 👀 on the message right away, so the author knows the bot saw it
           if [ -n "$react_url" ]; then
-            gh api -X POST "$react_url" -f content=eyes --silent || echo "::warning::could not react to $react_url"
-          fi
-          if [ "$kind" = pr ]; then
-            gh pr checkout "$number"
+            gh api "$react_url" -X POST -f content=eyes --silent || echo "::warning::could not react to $react_url"
           fi
           {
             echo "number=$number"
@@ -85,14 +90,108 @@ jobs:
             echo "trigger=$trigger"
             echo "kind=$kind"
             echo "react_url=$react_url"
+          } >> "$GITHUB_OUTPUT"
+      - name: Chat, read or prove?
+        id: classify
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          NUMBER: ${{ steps.ctx.outputs.number }}
+          KIND: ${{ steps.ctx.outputs.kind }}
+          AUTHOR: ${{ steps.ctx.outputs.author }}
+          REACT_URL: ${{ steps.ctx.outputs.react_url }}
+          MESSAGE: ${{ github.event.comment.body || github.event.review.body || github.event.issue.body }}
+          TITLE: ${{ github.event.issue.title || github.event.pull_request.title }}
+        run: |
+          # The thread so far, so "go ahead" after a proposal is understood as work.
+          thread=$( {
+            gh api "repos/$GITHUB_REPOSITORY/issues/$NUMBER" --jq '"\(.user.login) opened: \(.body // "" | .[0:1500])"'
+            gh api "repos/$GITHUB_REPOSITORY/issues/$NUMBER/comments?per_page=100" \
+              --jq '.[-7:-1][] | "\(.user.login): \(.body | .[0:1500])"'
+          } 2>/dev/null )
+          system='You are formalmind[bot], the maintainer'"'"'s assistant on the GitHub repository asyncswap/v2-proofs, a Lean 4 + Mathlib specification of the Async Swap protocol. Someone mentioned you. Triage the message into one mode:
+          - chat: greetings, thanks, acknowledgements, small talk, who you are, what you can do, or anything you can answer without looking at the repository. Write the reply yourself.
+          - read: answering needs the repository: files, proofs, definitions, git history, the PR diff, CI, or a careful reading of the thread. No file changes, no Lean build. Leave reply empty.
+          - prove: the author wants something changed, added, fixed, proved, ported, reconciled, reviewed with fixes pushed, or built. Also when they confirm a proposal that implies work ("go ahead", "do it"). Leave reply empty.
+          When unsure between chat and read choose read; between read and prove choose prove.
+          Chat replies: one to three short sentences, first person, plain words, like a colleague in chat. No headers, no sign-off, no mention of Claude, workflows or runs. Never write @formalmind. You can answer questions about the spec, review pull requests, and update proofs when asked.'
+          user=$(printf 'KIND=%s NUMBER=%s TITLE=%s\n\nThread so far:\n%s\n\nThe message from @%s that mentioned you:\n---\n%s\n---' \
+            "$KIND" "$NUMBER" "$TITLE" "$thread" "$AUTHOR" "$MESSAGE")
+          body=$(jq -n --arg system "$system" --arg user "$user" '{
+            model: "claude-opus-5-5",
+            max_tokens: 1024,
+            fallbacks: "default",
+            output_config: {
+              effort: "low",
+              format: { type: "json_schema", schema: {
+                type: "object",
+                properties: { mode: { type: "string", enum: ["chat", "read", "prove"] }, reply: { type: "string" } },
+                required: ["mode", "reply"], additionalProperties: false } }
+            },
+            system: $system,
+            messages: [{ role: "user", content: $user }]
+          }')
+          response=$(curl -sS https://api.anthropic.com/v1/messages \
+            -H "Content-Type: application/json" -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" -H "anthropic-beta: server-side-fallback-2026-07-01" \
+            -d "$body")
+          stop=$(echo "$response" | jq -r '.stop_reason // empty')
+          if [ "$stop" != "end_turn" ]; then
+            echo "::warning::triage did not complete (stop_reason=${stop:-none}); falling back to read"
+            echo "$response" | jq -c '{type, error, stop_reason}'
+            echo "mode=read" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          echo "$response" | jq -r '.content[] | select(.type == "text") | .text' > triage.json
+          mode=$(jq -r '.mode' triage.json)
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "mode: $mode"
+          if [ "$mode" = chat ]; then
+            jq -r '.reply' triage.json > reply.md
+            gh api "repos/$GITHUB_REPOSITORY/issues/$NUMBER/comments" -F body=@reply.md --silent
+            if [ -n "$REACT_URL" ]; then
+              gh api "$REACT_URL" -X POST -f content=+1 --silent || echo "::warning::could not react to $REACT_URL"
+            fi
+          fi
+
+  work:
+    needs: triage
+    if: needs.triage.outputs.mode != 'chat'
+    runs-on: ubuntu-latest
+    env:
+      FORMALMIND_APP_ID: ${{ secrets.FORMALMIND_APP_ID }}
+      MODE: ${{ needs.triage.outputs.mode }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: formalmind App token (comments, commits and PRs appear as formalmind[bot])
+        id: app
+        if: ${{ env.FORMALMIND_APP_ID != '' }}
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.FORMALMIND_APP_ID }}
+          private-key: ${{ secrets.FORMALMIND_APP_PRIVATE_KEY }}
+      - name: Check out the PR branch if there is one
+        id: ctx
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          KIND: ${{ needs.triage.outputs.kind }}
+          NUMBER: ${{ needs.triage.outputs.number }}
+        run: |
+          if [ "$KIND" = pr ]; then
+            gh pr checkout "$NUMBER"
+          fi
+          {
             echo "branch=$(git branch --show-current)"
             echo "sha=$(git rev-parse HEAD)"
           } >> "$GITHUB_OUTPUT"
       - name: Install elan
+        if: ${{ env.MODE == 'prove' }}
         run: |
           curl -sSfL https://elan.lean-lang.org/elan-init.sh | sh -s -- -y --default-toolchain none
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
       - uses: actions/cache@v4
+        if: ${{ env.MODE == 'prove' }}
         with:
           path: |
             .lake
@@ -100,6 +199,13 @@ jobs:
           key: lake-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}
           restore-keys: lake-${{ runner.os }}-
       - run: lake exe cache get
+        if: ${{ env.MODE == 'prove' }}
+      - name: Tools for this mode
+        id: tools
+        run: |
+          read="Bash(git diff:*),Bash(git log:*),Bash(git status:*),Bash(git show:*),Bash(git rev-parse:*),Bash(git branch:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh api repos/$GITHUB_REPOSITORY:*),mcp__github_inline_comment__create_inline_comment,Read,Glob,Grep"
+          prove="$read,Bash(lake:*),Bash(git switch:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(gh pr create:*),Edit,Write"
+          if [ "$MODE" = prove ]; then echo "allowed=$prove"; else echo "allowed=$read"; fi >> "$GITHUB_OUTPUT"
       - uses: anthropics/claude-code-action@v1
         env:
           # gh inside the bot's shell posts and pushes as formalmind[bot]
@@ -115,22 +221,23 @@ jobs:
           prompt: |
             Read .github/formalmind-mention.md and follow it. Then handle the mention below.
 
+            MODE=${{ env.MODE }}
             REPO=${{ github.repository }}
-            KIND=${{ steps.ctx.outputs.kind }}
-            NUMBER=${{ steps.ctx.outputs.number }}
-            TRIGGER=${{ steps.ctx.outputs.trigger }}
-            AUTHOR=${{ steps.ctx.outputs.author }}
+            KIND=${{ needs.triage.outputs.kind }}
+            NUMBER=${{ needs.triage.outputs.number }}
+            TRIGGER=${{ needs.triage.outputs.trigger }}
+            AUTHOR=${{ needs.triage.outputs.author }}
             BRANCH=${{ steps.ctx.outputs.branch }}
             SHA=${{ steps.ctx.outputs.sha }}
-            REACT_URL=${{ steps.ctx.outputs.react_url }}
+            REACT_URL=${{ needs.triage.outputs.react_url }}
             RUN_URL=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
             Title: ${{ github.event.issue.title || github.event.pull_request.title }}
 
-            The message from @${{ steps.ctx.outputs.author }} that summoned you:
+            The message from @${{ needs.triage.outputs.author }} that summoned you:
             ---
             ${{ github.event.comment.body || github.event.review.body || github.event.issue.body }}
             ---
           claude_args: >-
-            --allowedTools "Bash(lake:*),Bash(git diff:*),Bash(git log:*),Bash(git status:*),Bash(git show:*),Bash(git rev-parse:*),Bash(git branch:*),Bash(git switch:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr create:*),Bash(gh api repos/${{ github.repository }}:*),mcp__github_inline_comment__create_inline_comment,Read,Edit,Write,Glob,Grep"
+            --allowedTools "${{ steps.tools.outputs.allowed }}"
             --max-turns 80
