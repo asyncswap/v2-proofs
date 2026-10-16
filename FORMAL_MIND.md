@@ -6,6 +6,29 @@ could not be proved, and what the build said. Humans may add entries too; keep t
 
 <!-- formal-mind: insert new entries directly below this line -->
 
+## 2026-10-16 — asyncswap/v2-proofs issue #46 — spec: hook claim balances are non-negative under Escrow
+
+**Trigger:** swarm issue #46 (taken by the maintainer).
+
+**Contract change.** None.
+
+**Spec impact.** New `AsyncSwapProtocol/V2/NonNeg.lean`, imported from the `AsyncSwapProtocol`
+root. `Invariants.lean` untouched.
+
+**Theorems added.** `escrowOf_nonneg` (one open order's obligation is ≥ 0: `split_ifs <;> omega`
+over the natural-number fields), `owed_nonneg` (`Finset.sum_nonneg`),
+`Escrow.hook_claims_nonneg` (under `Escrow`, `0 ≤ w.claims c cfg.hook` for every currency),
+`step_hook_claims_nonneg` (after any v2 entry point, via `step_escrow`, same environment
+assumptions).
+
+**Theorems changed or weakened.** None.
+
+**Unproven gaps.** Still open: non-negativity of user (maker / filler) claim balances, of
+PoolManager-side totals (`Backing`), and of the native-ETH ledger entries (signed deltas by
+construction); these need per-entry-point arguments, not the escrow equation.
+
+**Build.** `lake build` clean, no `sorry`, no new axioms.
+
 ## 2026-10-16 — asyncswap/v2 @ afd161b — (commit title not available to the bot)
 
 **Trigger:** push to `asyncswap/v2` (`repository_dispatch`), commit
