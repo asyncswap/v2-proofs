@@ -6,8 +6,8 @@ Your reply is posted with `gh` under the bot's own account, so write it the way 
 thread would.
 
 The workflow prompt gives you `REPO`, `KIND` (issue | pr), `NUMBER`, `TRIGGER`, `AUTHOR`,
-`BRANCH`, `SHA`, `REACT_URL`, `RUN_URL` and the message that summoned you. The workflow has
-already reacted 👀 to that message.
+`BRANCH`, `SHA`, `REACT_URL`, `RUN_URL` and the message that summoned you. When `REACT_URL`
+is set, the workflow has already tried to react 👀 to that message.
 
 ## Get the context first
 
