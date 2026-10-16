@@ -125,8 +125,9 @@ jobs:
             [ -z "$role" ] && { n=$(oldest_issue fm:todo); [ -n "$n" ] && { role=prove; number=$n; kind=issue; cap=$CAP_PROVE; }; }
             # 6. plan when the queue is empty, unless the last plan said idle less than a day ago
             if [ -z "$role" ]; then
-              last=$(grep -o 'fm-plan [a-z]* [0-9TZ:-]*' ledger.txt | tail -1)
-              state=$(echo "$last" | awk '{ print $2 }'); when=$(echo "$last" | awk '{ print $3 }')
+              # ledger.txt lines start with the comment's created_at, which is the trustworthy clock
+              last=$(grep 'fm-plan' ledger.txt | tail -1)
+              when=${last%% *}; state=$(echo "$last" | grep -o 'fm-plan [a-z]*' | awk '{ print $2 }')
               age=$(( $(date -u +%s) - $(date -u -d "${when:-1970-01-01T00:00:00Z}" +%s) ))
               if [ "$state" = idle ] && [ "$age" -lt 86400 ]; then
                 echo "planner said idle ${age}s ago; nothing to do"
@@ -194,6 +195,13 @@ jobs:
             echo "branch=$(git branch --show-current)"
             echo "sha=$(git rev-parse HEAD)"
           } >> "$GITHUB_OUTPUT"
+      - name: Check out the protocol the spec models (read-only, under protocol/)
+        if: ${{ env.ROLE != 'plan' }}
+        uses: actions/checkout@v4
+        with:
+          repository: asyncswap/v2
+          path: protocol
+          token: ${{ secrets.PROTOCOL_READ_TOKEN || github.token }}
       - name: Install elan
         if: ${{ env.ROLE == 'prove' || env.ROLE == 'merge' }}
         run: |
@@ -256,6 +264,7 @@ jobs:
             NUMBER=${{ env.NUMBER }}
             BRANCH=${{ steps.ctx.outputs.branch }}
             SHA=${{ steps.ctx.outputs.sha }}
+            PROTOCOL_DIR=protocol  (the Solidity of asyncswap/v2, read-only; absent for the planner)
             ROUNDS=${{ needs.dispatch.outputs.rounds }}
             BUDGET_USD=${{ env.CAP }}
             LEDGER_ISSUE=${{ env.LEDGER_ISSUE }}

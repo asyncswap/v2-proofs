@@ -31,9 +31,12 @@ You scope the work of the swarm. You never write Lean yourself.
 4. **Digest.** Comment on the ledger issue, five to ten lines: what merged since your last
    digest (link the PRs), what is queued, what is blocked and what you want from the
    maintainer. End with exactly one marker line:
-   `<!-- fm-plan busy <ISO-8601 UTC timestamp> -->` when there is queued work, or
-   `<!-- fm-plan idle <timestamp> -->` when there is nothing to do until the protocol
-   changes or the maintainer answers. The dispatcher sleeps for a day on `idle`.
+   `<!-- fm-plan busy -->` when there is queued work, or `<!-- fm-plan idle -->` when there
+   is nothing to do until the protocol changes or the maintainer answers. The dispatcher
+   sleeps for a day on `idle`.
+5. **Humans work here too.** Before writing an issue, check open pull requests by people
+   (`gh pr list --state open`): if one already covers a roadmap item or a file, do not
+   queue the same work; mention it in the digest instead.
 
 ## Voice
 
