@@ -6,6 +6,24 @@ could not be proved, and what the build said. Humans may add entries too; keep t
 
 <!-- formal-mind: insert new entries directly below this line -->
 
+## 2026-10-16 — asyncswap/v2 @ 6cf3ac5 — (commit title not available to the bot)
+
+**Trigger:** push to `asyncswap/v2` (`repository_dispatch`), commit
+`6cf3ac56644f6242accfa81f08f14a123e847b28`.
+
+**Contract change.** None under `src/`. `protocol-diff.txt` is empty: `git diff --stat HEAD~1
+HEAD -- src` succeeded (the workflow writes `(no parent)` if the parent is missing), so the
+commit has a parent and changes no file in `src/`. The commit message could not be read from
+the sandbox, so the heading leaves the title out.
+
+**Spec impact.** None. `AsyncSwap.sol`, `AsyncFiller.sol`, `AsyncMatching.sol`,
+`RadixPriceTree.sol` and the Router / PoolManager / hook sequence are unchanged, so no Lean
+definition in `AsyncSwapSpec/*` or `AsyncSwapProtocol/*` changed.
+
+**Theorems added.** None. **Theorems changed or weakened.** None. **Unproven gaps.** None.
+**Build.** `lake build` clean (3165 jobs; only existing unreachable-tactic linter warnings in
+`AsyncSwapProtocol/V2/Invariants.lean`), no `sorry`, no new axioms.
+
 ## 2026-10-16 — asyncswap/v2 @ 66c2e20 — fix(radix): recycle node ids released by remove
 
 **Trigger:** push to `asyncswap/v2` (`repository_dispatch`), run
