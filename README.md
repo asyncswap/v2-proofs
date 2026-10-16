@@ -55,6 +55,18 @@ this repository should be read against them; change them here first if the proto
   `AsyncSwapSpec` and `AsyncSwap Production/packages/protocol` @ `fcf75d4` for
   `AsyncSwapProtocol`. The formal-mind bot re-pins on every protocol push.
 
+## Findings worth a contract-side look
+
+- **Radix node ids are never reused** (`RadixPriceTree._newNode`, `Bounds.lean`
+  `insert_level_fits`): each new distinct price level in a tree costs two fresh `uint32` ids
+  and `remove` frees none, so after `2^31 − 1` distinct levels a tree's `insert` reverts with
+  `NodeIdOverflow` and that side of the book (or that priority level) can no longer accept new
+  prices. Not reachable in practice at realistic gas, but it is a permanent brick with no
+  recovery path; recycling freed ids or widening the id would remove it.
+- **`_priceKey` can revert for huge inputs** (`priceKey_mulDiv_lt`): `mulDiv(amount, 1e18,
+  other)` overflows `uint256` once `amount ≥ 2^256 / 1e18 ≈ 1.16e58`, which would make
+  `addOrder` revert for such an order. Harmless for real tokens; stated as the input bound.
+
 ## Roadmap
 
 1. ~~**v2 state machine**~~ — done (`AsyncSwapProtocol/V2/Model.lean`, `Spec.lean`,
@@ -62,9 +74,9 @@ this repository should be read against them; change them here first if the proto
 2. ~~**Global invariants**~~ — done: `Backing` (PoolManager balance = claim supply + pool
    reserves), `Escrow` (hook claims = open input + escrowed bids), `step_conservation`
    (per-currency totals over all ledgers). Non-negativity of balances remains open.
-3. **Price-time priority** (decision 1): `bestAtPrice` returns the highest bid then lowest
-   sequence; a reprice loses time priority; `matchIncoming` / `matchBook` only match the
-   best bid against the best ask.
-4. **Bounds** (decision 2): overflow-freedom theorems per entry point.
+3. ~~**Price-time priority**~~ — done (`AsyncSwapSpec/Priority.lean`): bid first, then FIFO;
+   reprice re-enters last; the matched level is the best price.
+4. ~~**Bounds**~~ — done (`AsyncSwapSpec/Bounds.lean`): per-site overflow bounds, `uint64`
+   sequence and `uint32` radix node-id longevity bounds.
 5. **Radix tree refinement** (decision 4): pointer-level `RadixPriceTree` ≈ functional trie.
 6. **Hashing model** (decision 4): EIP-712 / Permit2 struct hashes and witness binding.
