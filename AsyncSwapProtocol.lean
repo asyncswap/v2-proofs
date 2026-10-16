@@ -7,3 +7,4 @@ import AsyncSwapProtocol.V2.Spec
 import AsyncSwapProtocol.V2.Settlement
 import AsyncSwapProtocol.V2.Invariants
 import AsyncSwapProtocol.V2.Conservation
+import AsyncSwapProtocol.V2.NonNeg
