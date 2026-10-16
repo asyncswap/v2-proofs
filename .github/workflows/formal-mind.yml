@@ -57,11 +57,18 @@ jobs:
           git fetch --depth=2 origin "$PROTO_SHA" || true
           git diff --stat HEAD~1 HEAD -- src > ../protocol-diff.txt 2>/dev/null || echo "(no parent)" > ../protocol-diff.txt
           git diff HEAD~1 HEAD -- src >> ../protocol-diff.txt 2>/dev/null || true
+      - name: formalmind App token (comments and PRs appear as formalmind[bot])
+        id: app
+        if: ${{ secrets.FORMALMIND_APP_ID != '' }}
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.FORMALMIND_APP_ID }}
+          private-key: ${{ secrets.FORMALMIND_APP_PRIVATE_KEY }}
       - name: Run the formal-mind bot (Claude Code)
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ github.token }}
+          github_token: ${{ steps.app.outputs.token || github.token }}
           prompt: |
             Follow the instructions in .github/formal-mind-prompt.md exactly.
             PROTO_REPO=${{ env.PROTO_REPO }}
@@ -72,6 +79,7 @@ jobs:
       - name: Open a pull request with the reconciled spec
         uses: peter-evans/create-pull-request@v6
         with:
+          token: ${{ steps.app.outputs.token || github.token }}
           base: dev
           branch: formal-mind/${{ env.PROTO_SHA }}
           add-paths: |
