@@ -51,6 +51,13 @@ Nobody ever writes `@formalmind` (that summons the chat bot, which is a differen
   sums the ledger, and if the budget allows picks one job in this order: merge, review,
   revise, resume, new issue, plan.
 
+## One rule for every `gh api` call
+
+The tool allowlist is a prefix match on `gh api repos/<this repo>`. Write the path first
+and every flag after it: `gh api repos/$REPO/... -X PATCH -F body=@file`. A command that
+starts with `gh api -X ...` or `gh api --paginate ...` is refused and your run silently
+loses that step.
+
 ## Notebook
 
 Every role keeps a notebook: one comment per run on the pinned issue #55 "Swarm notebook",
@@ -70,7 +77,7 @@ day's notes in the evening and checks them against what is actually on `dev`.
 
    Tasks are the concrete steps you intend to take, three to eight of them, in order.
 2. **Cross out as you go.** After each task, rewrite the comment with
-   `gh api -X PATCH repos/$REPO/issues/comments/<id> -F body=@note.md`: `- [x]` for done,
+   `gh api repos/$REPO/issues/comments/<id> -X PATCH -F body=@note.md`: `- [x]` for done,
    `- [ ] ~~task~~ dropped: <why>` for abandoned, and new lines for tasks you discovered.
    Never delete a task; the history of the list is the point.
 3. **Close the note** with two more lines under the list before you post your final
