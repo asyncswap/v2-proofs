@@ -51,7 +51,7 @@ theorem grows_burn_hook {cfg : Config} {t s : Tx} (h : Grows cfg t s) c n b :
   intro c' x hx
   have := h c' x hx
   rw [claims_burn_apply]
-  split_ifs <;> subst_vars <;> first | exact absurd rfl hx | exact this
+  split_ifs <;> subst_vars <;> exact this
 
 theorem grows_transfer {cfg : Config} {t s : Tx} (h : Grows cfg t s) c a d n : Grows cfg t (s.transfer c a d n) :=
   grows_of_claims h rfl
