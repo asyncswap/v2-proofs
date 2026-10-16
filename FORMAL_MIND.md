@@ -6,6 +6,28 @@ could not be proved, and what the build said. Humans may add entries too; keep t
 
 <!-- formal-mind: insert new entries directly below this line -->
 
+## 2026-10-16 — EIP-712 struct hashes for signed maker payloads (roadmap item 6)
+
+**Trigger:** swarm issue #45.
+
+**Contract change.** None. This is roadmap work toward decision 4 (the hashing model).
+
+**Spec impact.** New `AsyncSwapSpec/Hashing.lean`, imported from the `AsyncSwapSpec` root.
+keccak256 is a function argument `keccak : List ℕ → ℕ` over the `abi.encode` word list, and
+the theorems assume `Function.Injective keccak` (the standing assumption). No axiom is added.
+`Payload` restates the fields of `SigPayload.cancel` (with the `OrderKey` flattened to
+`owner, zeroForOne, salt`) and `SigPayload.permitOrder`, in that order. It cannot import
+`AsyncSwapProtocol`, because that library imports this one. The type strings
+`Cancel(...)` / `PermitOrder(...)` are written from the model's field lists, not copied from
+the Solidity (the sandbox has no copy of it), so they must be checked against the contract
+when `sigOk` is wired to `digest`. `AsyncSwapProtocol/*` is unchanged.
+
+**Theorems added.** `cancelTypeHash_ne_permitOrderTypeHash`, `structHash_injective`,
+`digest_injective` (one domain separator), `digest_cancel_ne_permitOrder` (any two domain
+separators). **Theorems changed or weakened.** None. **Unproven gaps.** None. Wiring the
+oracle and Permit2 witness binding are follow-ups. **Build.** `lake build` clean (3168 jobs),
+no `sorry`, no `admit`, no new axiom.
+
 ## 2026-10-16 — asyncswap/v2 @ afd161b — (commit title not available to the bot)
 
 **Trigger:** push to `asyncswap/v2` (`repository_dispatch`), commit
