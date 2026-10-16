@@ -207,6 +207,7 @@ jobs:
           prove="$read,Bash(lake:*),Bash(git switch:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(gh pr create:*),Edit,Write"
           if [ "$MODE" = prove ]; then echo "allowed=$prove"; else echo "allowed=$read"; fi >> "$GITHUB_OUTPUT"
       - uses: anthropics/claude-code-action@v1
+        id: bot
         env:
           # gh inside the bot's shell posts and pushes as formalmind[bot]
           GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
@@ -241,3 +242,12 @@ jobs:
           claude_args: >-
             --allowedTools "${{ steps.tools.outputs.allowed }}"
             --max-turns 80
+      - name: Outcome reaction (👍 done, 😕 failed)
+        if: ${{ always() && needs.triage.outputs.react_url != '' }}
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          REACT_URL: ${{ needs.triage.outputs.react_url }}
+          OUTCOME: ${{ steps.bot.outcome }}
+        run: |
+          if [ "$OUTCOME" = success ]; then content=+1; else content=confused; fi
+          gh api "$REACT_URL" -X POST -f content=$content --silent || echo "::warning::could not react to $REACT_URL"
