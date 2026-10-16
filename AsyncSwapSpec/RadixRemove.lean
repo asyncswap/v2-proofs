@@ -206,6 +206,7 @@ theorem nodes_freeNode (T : Tree) (id x : ℕ) :
 @[simp] theorem root_freeNode (T : Tree) id : (T.freeNode id).root = T.root := rfl
 @[simp] theorem root_setLeaf (T : Tree) p id : (T.setLeaf p id).root = T.root := rfl
 @[simp] theorem nodes_setLeaf (T : Tree) p id : (T.setLeaf p id).nodes = T.nodes := rfl
+@[simp] theorem leaves_setLeaf (T : Tree) p id : (T.setLeaf p id).leaves = Function.update T.leaves p id := rfl
 @[simp] theorem leaves_setNode (T : Tree) id n : (T.setNode id n).leaves = T.leaves := rfl
 @[simp] theorem leaves_freeNode (T : Tree) id : (T.freeNode id).leaves = T.leaves := rfl
 @[simp] theorem freeIds_setNode (T : Tree) id n : (T.setNode id n).freeIds = T.freeIds := rfl
@@ -239,6 +240,20 @@ theorem relink_parent_other {x : ℕ} (h1 : x ≠ leafId) (h2 : x ≠ branchId) 
     ((T.relink leafId branchId siblingId grandId goLeft).nodes x).parent = (T.nodes x).parent := by
   simp only [relink]
   split_ifs <;> simp [nodes_freeNode, nodes_setNode, h1, h2, h3] <;> split_ifs <;> simp_all
+
+/-- The leaf flag and price of any id other than the two freed ones are unchanged. -/
+theorem relink_leaf_price {x : ℕ} (h1 : x ≠ leafId) (h2 : x ≠ branchId) :
+    ((T.relink leafId branchId siblingId grandId goLeft).nodes x).leaf = (T.nodes x).leaf ∧
+    ((T.relink leafId branchId siblingId grandId goLeft).nodes x).price = (T.nodes x).price := by
+  simp only [relink]
+  split_ifs <;> simp [nodes_freeNode, nodes_setNode, h1, h2] <;> split_ifs <;> simp_all
+
+/-- `relink` commutes with `setLeaf` (the leaves map is untouched by relinking). -/
+theorem relink_setLeaf (q v : ℕ) :
+    (T.setLeaf q v).relink leafId branchId siblingId grandId goLeft =
+      { T.relink leafId branchId siblingId grandId goLeft with leaves := Function.update T.leaves q v } := by
+  simp only [relink, freeNode, setNode, setLeaf]
+  split_ifs <;> rfl
 
 @[simp] theorem relink_root :
     (T.relink leafId branchId siblingId grandId goLeft).root = if grandId = 0 then siblingId else T.root := by
@@ -601,5 +616,308 @@ theorem reads_removed (C : RemoveCtx T p leafId branchId siblingId grandId goLef
             exact hdisj a ha (by rw [e]; exact (hidsR c hc).1)
 
 end Remove
+
+/-! ## Top level: `Tree.remove` refines `Trie.remove` / `PriceIndex.remove` -/
+
+/-- Representation of a `PriceIndex`: `none` is the empty storage (`root = 0`, no leaves). -/
+def ReprIx (T : Tree) : PriceIndex → Prop
+  | none => T.root = 0 ∧ (∀ q, T.leaves q = 0) ∧ ∀ id ∈ T.freeIds, id ≤ T.nextNodeId ∧ id ≠ 0
+  | some t => Repr T t
+
+theorem Reads.of_nodes_eq {T T' : Tree} (h : T'.nodes = T.nodes) {id : ℕ} {t : Trie} (hr : Reads T id t) :
+    Reads T' id t := hr.mono (fun x _ => by rw [h])
+
+theorem idsFrom_of_nodes_eq {T T' : Tree} (h : T'.nodes = T.nodes) (id : ℕ) (t : Trie) :
+    idsFrom T' id t = idsFrom T id t := by
+  induction t generalizing id with
+  | leaf _ => rfl
+  | branch b l r ihl ihr => simp only [idsFrom, h, ihl, ihr]
+
+theorem Reads.leaf_fields {T : Tree} {id p : ℕ} (h : Reads T id (Trie.leaf p)) :
+    (T.nodes id).leaf = true ∧ (T.nodes id).price = p := by
+  cases h with | leaf _ _ _ hl hp => exact ⟨hl, hp⟩
+
+/-- Ids of a subtree of a `Nodup` read tree are `Nodup`. -/
+theorem Reads.nodup_sub {T : Tree} {id : ℕ} {t : Trie} (h : Reads T id t) :
+    (idsFrom T id t).Nodup → ∀ x ∈ idsFrom T id t, ∀ u, Reads T x u → (idsFrom T x u).Nodup := by
+  induction h with
+  | leaf id p hne hl hp =>
+    intro hnd x hx u hu
+    simp only [idsFrom, List.mem_singleton] at hx; subst hx
+    rw [(Reads.leaf _ _ hne hl hp).unique hu] at hnd; exact hnd
+  | branch id b l r hne hl hb hL hR hpL hpR ihL ihR =>
+    intro hnd x hx u hu
+    have hnd' := hnd
+    simp only [idsFrom, List.nodup_cons, List.nodup_append] at hnd'
+    simp only [idsFrom, List.mem_cons, List.mem_append] at hx
+    rcases hx with rfl | hx | hx
+    · rw [(Reads.branch _ _ _ _ hne hl hb hL hR hpL hpR).unique hu] at hnd; exact hnd
+    · exact ihL hnd'.2.1 x hx u hu
+    · exact ihR hnd'.2.2.1 x hx u hu
+
+namespace Tree
+
+/-- `remove` on a present, non-root price unfolds to one `relink`. -/
+theorem remove_eq_relink {T : Tree} {p : ℕ} (hne : T.leaves p ≠ 0) (hroot : T.leaves p ≠ T.root) :
+    T.remove p = some ((T.setLeaf p 0).relink (T.leaves p) (T.nodes (T.leaves p)).parent
+      (if (T.nodes (T.nodes (T.leaves p)).parent).left = T.leaves p then (T.nodes (T.nodes (T.leaves p)).parent).right
+        else (T.nodes (T.nodes (T.leaves p)).parent).left)
+      (T.nodes (T.nodes (T.leaves p)).parent).parent
+      (decide ((T.nodes (T.nodes (T.nodes (T.leaves p)).parent).parent).left = (T.nodes (T.leaves p)).parent))) := by
+  simp [Tree.remove, hne, hroot]; rfl
+
+end Tree
+
+theorem mem_idsFrom_of_eq {T : Tree} {id x : ℕ} {t : Trie} (h : id = x) : x ∈ idsFrom T id t :=
+  h ▸ mem_idsFrom_self T id t
+
+section TopLevel
+
+variable {T : Tree} {t : Trie} {p : ℕ}
+
+/-- `remove` of an absent price reverts (`PriceLevelMissing`). -/
+theorem remove_absent (h : Repr T t) (hp : p ∉ t.keys) : T.remove p = none := by
+  simp [Tree.remove, h.leaves_absent p hp]
+
+/-- Removing the only key frees the root and leaves the empty storage. -/
+theorem remove_root (h : Repr T t) (hp : p ∈ t.keys) (hroot : T.leaves p = T.root) :
+    t = Trie.leaf p ∧ T.remove p = some { ((T.setLeaf p 0).freeNode T.root) with root := 0 } ∧
+    ReprIx { ((T.setLeaf p 0).freeNode T.root) with root := 0 } none := by
+  obtain ⟨hleaf, hmem⟩ := h.leaves_mem p hp
+  have ht : t = Trie.leaf p := h.reads.unique (hroot ▸ hleaf)
+  have hne : T.leaves p ≠ 0 := hleaf.ne_zero
+  have hne' : T.root ≠ 0 := hroot ▸ hne
+  refine ⟨ht, ?_, rfl, ?_, ?_⟩
+  · simp [Tree.remove, hne', hroot]
+  · intro q
+    simp only [Tree.leaves_freeNode, Tree.leaves_setLeaf]
+    by_cases hq : q = p
+    · subst hq; simp
+    · rw [Function.update_of_ne hq]
+      exact h.leaves_absent q (by rw [ht]; simp [Trie.keys, hq])
+  · intro id hid
+    simp only [Tree.freeIds_freeNode, Tree.freeIds_setLeaf, List.mem_cons] at hid
+    simp only [Tree.nextNodeId_freeNode, Tree.nextNodeId_setLeaf]
+    rcases hid with rfl | hid
+    · exact ⟨(h.ids_fresh _ (mem_idsFrom_self _ _ _)).1, h.reads.ne_zero⟩
+    · exact h.free_fresh id hid
+
+/-- **Removal refinement.** Removing a present key that is not the only key: the contract's
+    relinking of the sibling into the grandparent stores exactly `Trie.remove`. -/
+theorem remove_refines (h : Repr T t) (hw : Trie.Wf t) (hp : p ∈ t.keys) (hroot : T.leaves p ≠ T.root) :
+    ∃ t' T', t.remove p = some t' ∧ T.remove p = some T' ∧ Repr T' t' := by
+  obtain ⟨hleaf, hmem⟩ := h.leaves_mem p hp
+  have hlne : T.leaves p ≠ 0 := hleaf.ne_zero
+  have hrm := Trie.remove_eq_removeLeaf hw p hp
+  rw [Tree.remove_eq_relink hlne hroot, hrm]
+  set leafId := T.leaves p with hleafId
+  set branchId := (T.nodes leafId).parent with hbranchId
+  set grandId := (T.nodes branchId).parent with hgrandId
+  set siblingId := (if (T.nodes branchId).left = leafId then (T.nodes branchId).right else (T.nodes branchId).left)
+    with hsiblingId
+  clear_value leafId branchId grandId siblingId
+  -- the branch node and its subtree
+  obtain ⟨hbr_mem, hbr_branch, hbr_child⟩ := h.reads.parent_of hmem hroot
+  rw [← hbranchId] at hbr_mem hbr_branch hbr_child
+  obtain ⟨u, hu, hu_ids, -⟩ := h.reads.sub hbr_mem
+  obtain ⟨b', l', r', rfl⟩ : ∃ b' l' r', u = Trie.branch b' l' r' := by
+    cases u with
+    | leaf q => cases hu with | leaf _ _ _ hl _ => rw [hl] at hbr_branch; exact absurd hbr_branch (by simp)
+    | branch b' l' r' => exact ⟨b', l', r', rfl⟩
+  have hnd_u := h.reads.nodup_sub h.nodup branchId hbr_mem _ hu
+  cases hu with
+  | branch _ _ _ _ hbne _ _ hL hR hpL hpR =>
+  simp only [idsFrom, List.nodup_cons, List.nodup_append, List.mem_append] at hnd_u
+  obtain ⟨hbr_notin, -, -, hdisj⟩ := hnd_u
+  have hlt := hleaf.leaf_fields
+  -- which child is the leaf, which is the sibling
+  have hchildren : ((T.nodes branchId).left = leafId ∧ siblingId = (T.nodes branchId).right) ∨
+      ((T.nodes branchId).right = leafId ∧ siblingId = (T.nodes branchId).left) := by
+    by_cases hcl : (T.nodes branchId).left = leafId
+    · exact Or.inl ⟨hcl, by rw [hsiblingId, if_pos hcl]⟩
+    · exact Or.inr ⟨hbr_child.resolve_left hcl, by rw [hsiblingId, if_neg hcl]⟩
+  have hleaf_ne_sib : leafId ≠ siblingId := by
+    rcases hchildren with ⟨hc, hs⟩ | ⟨hc, hs⟩
+    · exact hdisj leafId (by rw [← hc]; exact mem_idsFrom_self _ _ _) siblingId (by rw [hs]; exact mem_idsFrom_self _ _ _)
+    · exact (hdisj siblingId (by rw [hs]; exact mem_idsFrom_self _ _ _) leafId (by rw [← hc]; exact mem_idsFrom_self _ _ _)).symm
+  have hsib_side : siblingId ∈ idsFrom T (T.nodes branchId).left l' ∨ siblingId ∈ idsFrom T (T.nodes branchId).right r' := by
+    rcases hchildren with ⟨_, hs⟩ | ⟨_, hs⟩
+    · exact Or.inr (by rw [hs]; exact mem_idsFrom_self _ _ _)
+    · exact Or.inl (by rw [hs]; exact mem_idsFrom_self _ _ _)
+  have hbr_ne_sib : branchId ≠ siblingId := fun e => by
+    rcases hsib_side with hs | hs <;> rw [← e] at hs
+    · exact hbr_notin (Or.inl hs)
+    · exact hbr_notin (Or.inr hs)
+  have hsib_ne_zero : siblingId ≠ 0 := by
+    rcases hsib_side with hs | hs
+    · exact hL.ids_ne_zero _ hs
+    · exact hR.ids_ne_zero _ hs
+  have hsib_parent : (T.nodes siblingId).parent = branchId := by
+    rcases hchildren with ⟨_, hs⟩ | ⟨_, hs⟩
+    · rw [hs]; exact hpR
+    · rw [hs]; exact hpL
+  have hleaf_ne_br : leafId ≠ branchId := fun e => by
+    rw [e, hbr_branch] at hlt; exact absurd hlt.1 (by simp)
+  -- the grandparent
+  have hg0 : grandId = 0 ↔ branchId = T.root := by
+    constructor
+    · intro hg
+      by_contra hbroot
+      obtain ⟨hg_mem, -, -⟩ := h.reads.parent_of hbr_mem hbroot
+      rw [← hgrandId] at hg_mem
+      exact h.reads.ids_ne_zero _ hg_mem hg
+    · intro hbroot; rw [hgrandId, hbroot]; exact h.root_parent
+  have hgrand : grandId ≠ 0 → grandId ∈ idsFrom T T.root t ∧ (T.nodes grandId).leaf = false ∧
+      ((T.nodes grandId).left = branchId ∨ (T.nodes grandId).right = branchId) := by
+    intro hg
+    have hbroot : branchId ≠ T.root := fun e => hg (hg0.2 e)
+    obtain ⟨h1, h2, h3⟩ := h.reads.parent_of hbr_mem hbroot
+    rw [← hgrandId] at h1 h2 h3
+    exact ⟨h1, h2, h3⟩
+  have hg_ne_br : grandId ≠ branchId := fun e => by
+    have hg : grandId ≠ 0 := e ▸ hbne
+    obtain ⟨-, -, hch⟩ := hgrand hg
+    rw [e] at hch
+    rcases hch with hc | hc
+    · exact hbr_notin (Or.inl (mem_idsFrom_of_eq hc))
+    · exact hbr_notin (Or.inr (mem_idsFrom_of_eq hc))
+  have hg_ne_leaf : grandId ≠ leafId := fun e => by
+    have hg : grandId ≠ 0 := e ▸ hlne
+    obtain ⟨-, hgb, -⟩ := hgrand hg
+    rw [e] at hgb; rw [hgb] at hlt; exact absurd hlt.1 (by simp)
+  have hg_ne_sib : grandId ≠ siblingId := fun e => by
+    have hg : grandId ≠ 0 := e ▸ hsib_ne_zero
+    obtain ⟨-, hgb, hch⟩ := hgrand hg
+    rw [e] at hgb hch
+    have key : ∀ {c : ℕ} {s : Trie}, Reads T c s → (T.nodes c).leaf = false →
+        ((T.nodes c).left = branchId ∨ (T.nodes c).right = branchId) → branchId ∈ idsFrom T c s := by
+      intro c s hc hcl hcc
+      obtain ⟨h1, h2⟩ := hc.children_mem (mem_idsFrom_self _ _ _) hcl
+      rcases hcc with e' | e'
+      · rw [← e']; exact h1
+      · rw [← e']; exact h2
+    rcases hchildren with ⟨_, hs⟩ | ⟨_, hs⟩
+    · rw [hs] at hgb hch
+      exact hbr_notin (Or.inr (key hR hgb hch))
+    · rw [hs] at hgb hch
+      exact hbr_notin (Or.inl (key hL hgb hch))
+  -- the removal context
+  have C : RemoveCtx T p leafId branchId siblingId grandId (decide ((T.nodes grandId).left = branchId)) :=
+    { leaf_reads := hleaf
+      leaf_parent := hbranchId.symm
+      branch_branch := hbr_branch
+      branch_children := hchildren
+      sibling_parent := hsib_parent
+      grand_def := hgrandId
+      goLeft_def := by simp
+      grand_child := fun hg => (hgrand hg).2
+      leaf_ne_branch := hleaf_ne_br
+      leaf_ne_sibling := hleaf_ne_sib
+      branch_ne_sibling := hbr_ne_sib
+      grand_ne_branch := hg_ne_br
+      grand_ne_leaf := hg_ne_leaf
+      grand_ne_sibling := hg_ne_sib }
+  obtain ⟨t', hrem, hreads, hids, hnd'⟩ := reads_removed C h.reads hw h.nodup hmem (Ne.symm hroot)
+  refine ⟨t', _, hrem, rfl, ?_⟩
+  rw [Tree.relink_setLeaf]
+  have hrem' : t.remove p = some t' := by rw [hrm]; exact hrem
+  have hkeys : ∀ q, q ∈ t'.keys ↔ q ∈ t.keys ∧ q ≠ p := fun q => by
+    rw [← Trie.mem_remove hw p q, hrem']; exact Iff.rfl
+  set T4 := T.relink leafId branchId siblingId grandId (decide ((T.nodes grandId).left = branchId)) with hT4
+  have hroot_eq : T4.root = newId leafId branchId siblingId T.root := by
+    rw [hT4, Tree.relink_root]; simp only [newId]
+    by_cases hbroot : branchId = T.root
+    · simp only [hg0.2 hbroot, hbroot.symm, ↓reduceIte, eq_self_iff_true]
+    · have h1 : ¬ grandId = 0 := fun e => hbroot (hg0.1 e)
+      simp only [h1, Ne.symm hbroot, ↓reduceIte]
+  have hroot_parent : (T4.nodes (newId leafId branchId siblingId T.root)).parent = 0 := by
+    rw [hT4]; simp only [newId]
+    by_cases hbroot : T.root = branchId
+    · simp only [hbroot, ↓reduceIte, eq_self_iff_true]
+      rw [Tree.relink_nodes_sibling T _ _ _ _ _ (Ne.symm hleaf_ne_sib) (Ne.symm hbr_ne_sib) (Ne.symm hg_ne_sib)]
+      exact hg0.2 hbroot.symm
+    · simp only [hbroot, ↓reduceIte]
+      have hroot_ne_sib : T.root ≠ siblingId := fun e => by
+        rw [← e, h.root_parent] at hsib_parent; exact hbne hsib_parent.symm
+      rw [Tree.relink_parent_other T _ _ _ _ _ (Ne.symm hroot) hbroot hroot_ne_sib]; exact h.root_parent
+  have hlp : ∀ y, y ≠ leafId → y ≠ branchId →
+      (T4.nodes y).leaf = (T.nodes y).leaf ∧ (T4.nodes y).price = (T.nodes y).price :=
+    fun y h1 h2 => by rw [hT4]; exact Tree.relink_leaf_price T _ _ _ _ _ h1 h2
+  have hnext : T4.nextNodeId = T.nextNodeId := by rw [hT4, Tree.relink_nextNodeId]
+  have hfree : T4.freeIds = leafId :: branchId :: T.freeIds := by rw [hT4, Tree.relink_freeIds]
+  clear_value T4
+  set T5 : Tree := { T4 with leaves := Function.update T.leaves p 0 } with hT5
+  have h5n : T5.nodes = T4.nodes := rfl
+  have h5r : T5.root = T4.root := rfl
+  have h5l : T5.leaves = Function.update T.leaves p 0 := rfl
+  have h5f : T5.freeIds = T4.freeIds := rfl
+  have h5x : T5.nextNodeId = T4.nextNodeId := rfl
+  clear_value T5
+  refine
+    { reads := ?_, nodup := ?_, root_parent := ?_, leaves_mem := ?_, leaves_absent := ?_,
+      ids_fresh := ?_, free_fresh := ?_ }
+  · rw [h5r, hroot_eq]; exact hreads.of_nodes_eq h5n
+  · rw [h5r, hroot_eq, idsFrom_of_nodes_eq h5n]; exact hnd'
+  · rw [h5r, h5n, hroot_eq]; exact hroot_parent
+  · intro q hq
+    obtain ⟨hqt, hqp⟩ := (hkeys q).1 hq
+    rw [h5l, Function.update_of_ne hqp, h5r, hroot_eq, idsFrom_of_nodes_eq h5n]
+    obtain ⟨hxr, hxm⟩ := h.leaves_mem q hqt
+    obtain ⟨y, hy, hyr⟩ := hreads.exists_leaf hq
+    obtain ⟨hy1, hy2, hy3⟩ := hids y hy
+    have hyr' : Reads T y (Trie.leaf q) := by
+      obtain ⟨hl4, hp4⟩ := hyr.leaf_fields
+      obtain ⟨e1, e2⟩ := hlp y hy2 hy3
+      exact Reads.leaf y q hyr.ne_zero (by rw [← e1]; exact hl4) (by rw [← e2]; exact hp4)
+    have hxy : T.leaves q = y := h.reads.leaf_unique hw hxm hy1 hxr hyr'
+    rw [hxy]
+    exact ⟨hyr.of_nodes_eq h5n, hy⟩
+  · intro q hq
+    rw [h5l]
+    by_cases hqp : q = p
+    · subst hqp; simp
+    · rw [Function.update_of_ne hqp]
+      exact h.leaves_absent q (fun hqt => hq ((hkeys q).2 ⟨hqt, hqp⟩))
+  · intro id hid
+    rw [h5r, hroot_eq, idsFrom_of_nodes_eq h5n] at hid
+    obtain ⟨h1, h2, h3⟩ := hids id hid
+    obtain ⟨h4, h5⟩ := h.ids_fresh id h1
+    rw [h5x, h5f, hnext, hfree]
+    simp only [List.mem_cons, not_or]
+    exact ⟨h4, h2, h3, h5⟩
+  · intro id hid
+    rw [h5f, hfree] at hid
+    rw [h5x, hnext]
+    simp only [List.mem_cons] at hid
+    rcases hid with rfl | rfl | hid
+    · exact ⟨(h.ids_fresh _ hmem).1, hlne⟩
+    · exact ⟨(h.ids_fresh _ hbr_mem).1, hbne⟩
+    · exact h.free_fresh id hid
+
+/-- **`PriceIndex.remove` refinement.** On every represented index and present price, the
+    contract's `remove` succeeds and stores exactly the verified `PriceIndex.remove`. -/
+theorem PriceIndex.remove_refines {T : Tree} {ix : PriceIndex} (h : ReprIx T ix) (hw : ix.Wf) {p : ℕ}
+    (hp : p ∈ ix.keys) : ∃ T', T.remove p = some T' ∧ ReprIx T' (ix.remove p) := by
+  cases ix with
+  | none => simp [PriceIndex.keys] at hp
+  | some t =>
+    by_cases hroot : T.leaves p = T.root
+    · obtain ⟨ht, hT, hR⟩ := AsyncSwap.remove_root h hp hroot
+      refine ⟨_, hT, ?_⟩
+      have : PriceIndex.remove p (some t) = none := by simp [PriceIndex.remove, ht, Trie.remove]
+      rw [this]; exact hR
+    · obtain ⟨t', T', ht', hT', hR⟩ := AsyncSwap.remove_refines h hw hp hroot
+      refine ⟨T', hT', ?_⟩
+      show ReprIx T' (t.remove p)
+      rw [ht']; exact hR
+
+/-- `remove` of an absent price reverts (`PriceLevelMissing`), on any represented index. -/
+theorem PriceIndex.remove_absent {T : Tree} {ix : PriceIndex} (h : ReprIx T ix) {p : ℕ} (hp : p ∉ ix.keys) :
+    T.remove p = none := by
+  cases ix with
+  | none => simp [Tree.remove, h.2.1 p]
+  | some t => exact AsyncSwap.remove_absent h hp
+
+end TopLevel
 
 end AsyncSwap
