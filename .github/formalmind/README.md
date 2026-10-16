@@ -38,6 +38,11 @@ Nobody ever writes `@formalmind` (that summons the chat bot, which is a differen
   decides whether a human must see it (theorem statements or recorded decisions changed,
   wide diffs, many rounds, or a false claim), and then squash-merges, bounces, or holds
   the PR for `@mmsaki`.
+- **chief** runs once a day at 23:40 UTC, before the budget resets, and posts one comment
+  on the pinned issue #53 "Chief updates", tagging the maintainer. Its first line is one
+  of **Done**, **Working**, **Waiting on you** or **Paused on budget**, followed by what
+  landed, what is in flight, what needs the maintainer, and the spend. Following that
+  issue is how you know whether the swarm is finished.
 - **the human** is tagged only when a decision is needed. `fm:human-ok` on a PR tells the
   merger the maintainer has looked and it may merge as is.
 - **dispatcher** is not a model. Every 30 minutes, or as soon as an `fm:` label changes, it

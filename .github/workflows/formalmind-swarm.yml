@@ -12,10 +12,11 @@ name: formalmind swarm
 on:
   schedule:
     - cron: "*/30 * * * *"
+    - cron: "40 23 * * *"   # the chief reports, once a day before the budget resets
   workflow_dispatch:
     inputs:
       role:
-        description: "force a role (plan | prove | review | merge); blank lets the dispatcher decide"
+        description: "force a role (plan | prove | review | merge | chief); blank lets the dispatcher decide"
         required: false
         default: ""
       number:
@@ -40,12 +41,14 @@ concurrency:
 
 env:
   LEDGER_ISSUE: "38"
+  CHIEF_ISSUE: "53"
   DAILY_USD: "2.00"
   MONTHLY_USD: "50.00"
   CAP_PLAN: "0.40"
   CAP_REVIEW: "0.40"
   CAP_MERGE: "0.40"
   CAP_PROVE: "1.20"
+  CAP_CHIEF: "0.40"
 
 jobs:
   dispatch:
@@ -74,8 +77,11 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
           FORCE_ROLE: ${{ inputs.role }}
           FORCE_NUMBER: ${{ inputs.number }}
+          SCHEDULE: ${{ github.event.schedule }}
         run: |
           R="$GITHUB_REPOSITORY"
+          # The daily cron is the reporter's; it only has to fit the month's budget.
+          [ "$SCHEDULE" = "40 23 * * *" ] && FORCE_ROLE=chief
           today=$(date -u +%F); month=$(date -u +%Y-%m)
           gh api --paginate "repos/$R/issues/$LEDGER_ISSUE/comments?since=${month}-01T00:00:00Z&per_page=100" \
             --jq '.[] | "\(.created_at) \(.body | gsub("\n"; " "))"' > ledger.txt || true
@@ -94,6 +100,8 @@ jobs:
             role="$FORCE_ROLE"; number="$FORCE_NUMBER"
             case "$role" in
               plan) cap=$CAP_PLAN; kind=none ;;
+              chief) cap=$CAP_CHIEF; kind=none
+                remaining=$(awk -v m="$MONTHLY_USD" -v mo="$spent_month" 'BEGIN { printf "%.2f", m - mo }') ;;
               review) cap=$CAP_REVIEW; kind=pr ;;
               merge) cap=$CAP_MERGE; kind=pr ;;
               prove) cap=$CAP_PROVE
@@ -246,6 +254,7 @@ jobs:
           base="Read,Glob,Grep,Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(git status:*),Bash(git rev-parse:*),Bash(git branch:*),Bash(git fetch:*),Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh issue edit:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr edit:*),Bash(gh api repos/$GITHUB_REPOSITORY:*)"
           case "$ROLE" in
             plan) allowed="$base,Bash(gh issue create:*)" ;;
+            chief) allowed="$base,Bash(gh run list:*)" ;;
             review) allowed="$base,mcp__github_inline_comment__create_inline_comment" ;;
             merge) allowed="$base,mcp__github_inline_comment__create_inline_comment,Bash(lake:*),Write" ;;
             prove) allowed="$base,Edit,Write,Bash(lake:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git rebase:*),Bash(git merge:*),Bash(git switch:*),Bash(git checkout:*),Bash(git stash:*),Bash(gh pr create:*)" ;;
@@ -277,6 +286,7 @@ jobs:
             ROUNDS=${{ needs.dispatch.outputs.rounds }}
             BUDGET_USD=${{ env.CAP }}
             LEDGER_ISSUE=${{ env.LEDGER_ISSUE }}
+            CHIEF_ISSUE=${{ env.CHIEF_ISSUE }}
             RUN_URL=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           claude_args: >-
             --allowedTools "${{ steps.tools.outputs.allowed }}"
