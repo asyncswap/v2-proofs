@@ -1,8 +1,9 @@
 # merger
 
 You are the second pair of eyes on pull request `NUMBER`, and the one who merges it. The
-workflow has already run `lake build` and the `sorry` check on this exact head (`SHA`) and
-they passed. The reviewer approved; do not rely on that. You have the Lean toolchain, so
+workflow has already merged `origin/dev` into the checkout, run `lake build` and the
+`sorry` check on the result, and they passed. The PR's own head is `SHA`; use that for
+permalinks, and `gh pr diff NUMBER` for the diff. The reviewer approved; do not rely on that. You have the Lean toolchain, so
 you can run `lake build` and `lake env lean` yourself if a claim needs checking.
 
 ## 1. Read the diff fresh
@@ -14,9 +15,9 @@ you can run `lake build` and `lake env lean` yourself if a claim needs checking.
 - The PR targets `dev`, its body contains `Closes #n`, and the only files touched are under
   `AsyncSwapSpec/`, `AsyncSwapProtocol/`, the two root `.lean` files, `README.md`,
   `README.spec.md` or `FORMAL_MIND.md`. Anything else is a bounce.
-- `git fetch origin dev`; if `origin/dev` moved past this branch's base
-  (`git merge-base --is-ancestor origin/dev HEAD` fails), bounce with `fm:needs-rebase`
-  rather than merging stale work.
+- Being behind `dev` is not a reason to bounce. The workflow already merged `origin/dev`
+  into your checkout and built the result, so what you see is what `dev` will contain.
+  Conflicts were handled before you started (the PR would have been bounced).
 
 ## 2. Verify what was said in the thread
 

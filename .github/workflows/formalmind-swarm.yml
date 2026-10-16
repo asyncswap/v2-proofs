@@ -223,6 +223,15 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
         run: |
+          # Build what dev would contain after the merge, not just the branch head.
+          git fetch origin dev
+          if ! git merge --no-edit origin/dev >/dev/null 2>&1; then
+            echo "clean=false" >> "$GITHUB_OUTPUT"
+            git merge --abort || true
+            gh pr edit "$NUMBER" --remove-label fm:approved --add-label fm:needs-rebase
+            gh pr comment "$NUMBER" --body "**merger** this branch conflicts with \`dev\` now, so it goes back to @fm-prover for a rebase before I look at it."
+            exit 0
+          fi
           if lake build 2>&1 | tee build.log && ! grep -rn --include='*.lean' -E '\bsorry\b' AsyncSwapSpec AsyncSwapProtocol; then
             echo "clean=true" >> "$GITHUB_OUTPUT"
           else
