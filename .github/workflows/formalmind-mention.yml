@@ -42,10 +42,17 @@ jobs:
           key: lake-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}
           restore-keys: lake-${{ runner.os }}-
       - run: lake exe cache get
+      - name: formalmind App token (comments and PRs appear as formalmind[bot])
+        id: app
+        if: ${{ secrets.FORMALMIND_APP_ID != '' }}
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.FORMALMIND_APP_ID }}
+          private-key: ${{ secrets.FORMALMIND_APP_PRIVATE_KEY }}
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ github.token }}
+          github_token: ${{ steps.app.outputs.token || github.token }}
           trigger_phrase: "@formalmind"
           claude_args: >-
             --allowedTools "Bash(lake *),Bash(git diff *),Bash(git log *),Bash(git status *),Read,Edit,Write,Glob,Grep"
