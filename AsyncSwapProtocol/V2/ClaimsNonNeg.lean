@@ -51,10 +51,7 @@ theorem grows_burn_hook {cfg : Config} {t s : Tx} (h : Grows cfg t s) c n b :
   intro c' x hx
   have := h c' x hx
   rw [claims_burn_apply]
-  split_ifs with h1 h2
-  · exact absurd h2 hx
-  · subst h1; exact this
-  · exact this
+  split_ifs <;> subst_vars <;> first | exact absurd rfl hx | exact this
 
 theorem grows_transfer {cfg : Config} {t s : Tx} (h : Grows cfg t s) c a d n : Grows cfg t (s.transfer c a d n) :=
   grows_of_claims h rfl
@@ -87,13 +84,11 @@ theorem grows_payOut {cfg : Config} {t s : Tx} (h : Grows cfg t s) c d n b by_ :
   · exact grows_mint h _ _ _ _
   · exact grows_take h _ _ _ _
 
-/-- Closes a `Grows` goal whose right-hand side is a chain of ledger steps ending at the left. -/
-macro "grows" : tactic => `(tactic| repeat (first
-  | apply grows_mint | apply grows_burn_hook | apply grows_transfer | apply grows_take
-  | apply grows_settle | apply grows_addDelta | apply grows_accountSwap | apply grows_donate
-  | apply grows_poolSwap | apply grows_setOrder | apply grows_createOrder | apply grows_deleteOrder
-  | apply grows_setPendingNative | apply grows_useRouterCancelNonce | apply grows_payOut
-  | exact grows_refl _ _))
+theorem grows_ite {cfg : Config} {t a b : Tx} {p : Prop} [Decidable p] (ha : Grows cfg t a) (hb : Grows cfg t b) :
+    Grows cfg t (if p then a else b) := by
+  split_ifs
+  · exact ha
+  · exact hb
 
 /-! ## Bodies -/
 
@@ -133,19 +128,25 @@ theorem grows_matchLoop (cfg : Config) : ∀ (ms : List MatchChoice) (t t' : Tx)
     exact grows_trans (grows_matchPairBody cfg t _ _ _) (ih _ _ h)
 
 theorem grows_createBody {cfg : Config} {t s : Tx} (h : Grows cfg t s) o p : Grows cfg t (createBody cfg s o p) := by
-  unfold createBody; grows; exact h
+  simp only [createBody]
+  exact grows_settle (grows_accountSwap (grows_createOrder (grows_mint h _ _ _ _) _ _) _ _ _ _) _ _ _ _
 
 theorem grows_priorityFeeBody {cfg : Config} {t s : Tx} (h : Grows cfg t s) o :
     Grows cfg t (priorityFeeBody cfg s o) := by
   unfold priorityFeeBody; split_ifs
   · exact h
-  · grows; exact h
+  · exact grows_setOrder (grows_mint (grows_settle h _ _ _ _) _ _ _ _) _ _
 
 theorem grows_fillBody (cfg : Config) (w : World) s o v : Grows cfg (Tx.start w) (fillBody cfg w s o v) := by
+  have g0 := grows_refl cfg (Tx.start w)
+  have g1 := grows_ite (p := cfg.isNative o.output = true)
+    (grows_setPendingNative (grows_transfer g0 o.output s cfg.hook v) v) g0
+  have g2 := grows_ite (p := cfg.isNative o.output = true) g1
+    (grows_settle g1 o.output s cfg.hook (liveGross w o.key))
   simp only [fillBody]
-  apply grows_setPendingNative; apply grows_deleteOrder; apply grows_settleBidBody
-  apply grows_payOutBody; apply grows_mint; apply grows_payOut
-  split_ifs <;> grows
+  exact grows_setPendingNative (grows_deleteOrder (grows_settleBidBody (grows_payOutBody
+    (grows_mint (grows_payOut (grows_ite (grows_settle (grows_ite (grows_setPendingNative g2 _) g2) _ _ _ _)
+      (grows_ite (grows_setPendingNative g2 _) g2)) _ _ _ _ _) _ _ _ _) _ _ _) _) _) _
 
 theorem grows_cancelBody (cfg : Config) (t : Tx) o : Grows cfg t (cancelBody cfg t o) := by
   unfold cancelBody
@@ -154,7 +155,8 @@ theorem grows_cancelBody (cfg : Config) (t : Tx) o : Grows cfg t (cancelBody cfg
 theorem grows_liquidityFillBody (cfg : Config) (w : World) o n :
     Grows cfg (Tx.start w) (liquidityFillBody cfg w o n) := by
   simp only [liquidityFillBody]
-  apply grows_deleteOrder; apply grows_settleBidBody; grows
+  exact grows_deleteOrder (grows_settleBidBody (grows_payOut (grows_poolSwap
+    (grows_burn_hook (grows_refl cfg _) _ _ _) _ _ _ _ _) _ _ _ _ _) _) _
 
 /-! ## Entry points -/
 
@@ -163,11 +165,11 @@ theorem grows_liquidityFillBody (cfg : Config) (w : World) o n :
 private theorem owed_nonneg' (c : Currency) (w : World) : 0 ≤ owed c w :=
   Finset.sum_nonneg (fun k _ => by unfold escrowOf; split_ifs <;> omega)
 
-theorem ClaimsNonNeg.of_grows {cfg : Config} {w w' : World} (hN : ClaimsNonNeg cfg w) (hE' : Escrow cfg w')
-    (hg : Grows cfg (Tx.start w) ⟨w', fun _ _ => 0, 0⟩) : ClaimsNonNeg cfg w' := by
+theorem ClaimsNonNeg.of_grows {cfg : Config} {w : World} {t : Tx} (hN : ClaimsNonNeg cfg w)
+    (hE' : Escrow cfg t.w) (hg : Grows cfg (Tx.start w) t) : ClaimsNonNeg cfg t.w := by
   intro c x
   by_cases hx : x = cfg.hook
-  · subst hx; rw [hE'.claims c]; exact owed_nonneg' c w'
+  · subst hx; rw [hE'.claims c]; exact owed_nonneg' c t.w
   · exact (hN c x).trans (hg c x hx)
 
 /-- `NativeClaims.redeem` burns only the caller's claims, and only up to their balance. -/
@@ -176,13 +178,10 @@ theorem redeemNative_claims_nonneg {cfg : Config} {w w' : World} {s n r}
   simp only [redeemNative] at h
   split_ifs at h with hg
   simp only [Option.some.injEq] at h; subst h
+  obtain ⟨_, _, hle, _⟩ := hg
   intro c x
-  have := hN c x
   simp only [claims_take, claims_burn_apply, claims_start]
-  split_ifs with h1 h2
-  · subst h1 h2; omega
-  · exact this
-  · exact this
+  split_ifs <;> subst_vars <;> first | (have := hN false x; omega) | exact hN _ _
 
 /-- **Every claim balance stays non-negative across every v2 entry point.**  Environment
     assumptions as in `step_escrow` (which supplies the hook's own balance): makers, fillers
@@ -206,7 +205,8 @@ theorem step_claims_nonneg {cfg : Config} {w w' : World} {a : Action} (hE : Escr
       simp only [swapBody] at hbd
       refine hN.of_grows hE' (grows_trans ?_ (grows_matchLoop cfg ms _ _ hbd))
       apply grows_priorityFeeBody
-      split_ifs <;> apply grows_createBody <;> grows
+      exact grows_ite (grows_createBody (grows_transfer (grows_refl cfg _) _ _ _ _) _ _)
+        (grows_createBody (grows_refl cfg _) _ _)
   | matchBook _ mm ms =>
     simp only [step, matchBook] at h
     split_ifs at h
@@ -242,7 +242,7 @@ theorem step_claims_nonneg {cfg : Config} {w w' : World} {a : Action} (hE : Escr
     split_ifs at h; simp only [Option.some.injEq] at h; subst h
     exact hN
   | setExecutor s e b =>
-    simp only [step, setExecutor, Option.some.injEq] at h; subst h
+    simp only [step, Protocol.setExecutor, Option.some.injEq] at h; subst h
     exact hN
 
 end AsyncSwapProtocol.V2
