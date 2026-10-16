@@ -166,4 +166,54 @@ theorem IdAlloc.insert_no_overflow {a : IdAlloc} (h : a.Wf) (peak : ℕ) (hp : a
   unfold liveIds at *
   split_ifs at * <;> omega
 
+/-- Reachability form of the `hfree` hypothesis above: `peak` bounds every level count seen so
+    far, and the free list only holds ids released from levels between `levels` and `peak`. -/
+def IdAlloc.Bounded (peak : ℕ) (a : IdAlloc) : Prop :=
+  a.Wf ∧ a.levels ≤ peak ∧ a.free ≤ liveIds peak - liveIds a.levels
+
+/-- The empty `Tree` (`nextNodeId = 0`, `freeIds = []`). -/
+def IdAlloc.empty : IdAlloc := { levels := 0, next := 0, free := 0 }
+
+theorem IdAlloc.bounded_empty : IdAlloc.empty.Bounded 0 := by
+  simp [IdAlloc.Bounded, IdAlloc.Wf, IdAlloc.empty, liveIds]
+
+theorem IdAlloc.bounded_insert {a : IdAlloc} {peak : ℕ} (h : a.Bounded peak) :
+    a.insert.Bounded (max peak (a.levels + 1)) := by
+  simp only [IdAlloc.Bounded, IdAlloc.Wf, IdAlloc.insert] at *
+  unfold liveIds at *
+  split_ifs at * <;> omega
+
+theorem IdAlloc.bounded_remove {a : IdAlloc} {peak : ℕ} (h : a.Bounded peak) :
+    a.remove.Bounded peak := by
+  simp only [IdAlloc.Bounded, IdAlloc.Wf, IdAlloc.remove] at *
+  split_ifs with h0
+  · exact h
+  · simp only []
+    unfold liveIds at *
+    split_ifs at * <;> omega
+
+/-- Run a sequence of new-price `insert`s (`true`) and `remove`s (`false`), tracking the peak
+    number of simultaneously stored prices. -/
+def IdAlloc.run : List Bool → IdAlloc × ℕ → IdAlloc × ℕ
+  | [], s => s
+  | true :: ops, (a, peak) => IdAlloc.run ops (a.insert, max peak (a.levels + 1))
+  | false :: ops, (a, peak) => IdAlloc.run ops (a.remove, peak)
+
+theorem IdAlloc.run_bounded (ops : List Bool) {a : IdAlloc} {peak : ℕ} (h : a.Bounded peak) :
+    (IdAlloc.run ops (a, peak)).1.Bounded (IdAlloc.run ops (a, peak)).2 := by
+  induction ops generalizing a peak with
+  | nil => exact h
+  | cons op ops ih =>
+    cases op
+    · exact ih (IdAlloc.bounded_remove h)
+    · exact ih (IdAlloc.bounded_insert h)
+
+/-- **From an empty tree, `nextNodeId` never exceeds the ids of the peak number of
+    simultaneously stored prices**, for every insert/remove history: `next_le_peak` with its
+    `hfree` hypothesis discharged. -/
+theorem IdAlloc.run_next_le_peak (ops : List Bool) :
+    (IdAlloc.run ops (IdAlloc.empty, 0)).1.next ≤ liveIds (IdAlloc.run ops (IdAlloc.empty, 0)).2 := by
+  obtain ⟨h, hp, hfree⟩ := IdAlloc.run_bounded ops IdAlloc.bounded_empty
+  exact IdAlloc.next_le_peak h _ hp hfree
+
 end AsyncSwap

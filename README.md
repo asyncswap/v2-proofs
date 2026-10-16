@@ -55,7 +55,7 @@ this repository should be read against them; change them here first if the proto
 - **Fewer than `2^31` price levels are stored at once** per radix tree. With id recycling
   (roadmap item 7, decision: recycle) this is the only way `insert` can revert on ids
   (`Bounds.lean` `IdAlloc.insert_no_overflow`); it would require `2^31` live storage slots.
-- **The reference commits** are `asyncswap/v2` (working tree as of 2026-10-15) for
+- **The reference commits** are `asyncswap/v2` @ `66c2e20` for
   `AsyncSwapSpec` and `AsyncSwap Production/packages/protocol` @ `fcf75d4` for
   `AsyncSwapProtocol`. The formal-mind bot re-pins on every protocol push.
 
