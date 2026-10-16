@@ -18,11 +18,19 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write
   id-token: write
+
+# One reconciliation at a time; later protocol pushes queue behind the running one.
+concurrency:
+  group: formal-mind-reconcile
+  cancel-in-progress: false
 
 jobs:
   reconcile:
     runs-on: ubuntu-latest
+    # Hard ceiling for one reconciliation; the bot's own budget is --max-turns below.
+    timeout-minutes: 240
     env:
       FORMALMIND_APP_ID: ${{ secrets.FORMALMIND_APP_ID }}
       PROTO_REPO: ${{ github.event.client_payload.repo || inputs.repo }}
@@ -74,9 +82,21 @@ jobs:
             Follow the instructions in .github/formal-mind-prompt.md exactly.
             PROTO_REPO=${{ env.PROTO_REPO }}
             PROTO_SHA=${{ env.PROTO_SHA }}
-          claude_args: '--allowedTools "Bash(lake *),Bash(git diff *),Bash(git log *),Read,Edit,Write,Glob,Grep" --max-turns 80'
+          # ~200 tool calls: a hard reconciliation is a few dozen edit/`lake build` cycles at 1-3 min each.
+          claude_args: '--allowedTools "Bash(lake *),Bash(git diff *),Bash(git log *),Read,Edit,Write,Glob,Grep" --max-turns 200'
       - name: Gate on a clean build
-        run: lake build && ! grep -rn --include='*.lean' -E '\bsorry\b' AsyncSwapSpec AsyncSwapProtocol
+        run: |
+          set -o pipefail
+          lake build 2>&1 | tee build.log
+          ! grep -rn --include='*.lean' -E '\bsorry\b' AsyncSwapSpec AsyncSwapProtocol
+      - name: Changelog entry for the pull request body
+        id: entry
+        run: |
+          {
+            echo 'body<<FORMALMIND_EOF'
+            awk '/<!-- formal-mind: insert new entries directly below this line -->/{f=1; next} f && /^## /{n++} f && n==2{exit} f' FORMAL_MIND.md
+            echo 'FORMALMIND_EOF'
+          } >> "$GITHUB_OUTPUT"
       - name: Open a pull request with the reconciled spec
         uses: peter-evans/create-pull-request@v6
         with:
@@ -97,6 +117,30 @@ jobs:
             ${{ env.PROTO_MSG }}
           body: |
             Automated reconciliation of the Lean spec with `${{ env.PROTO_REPO }}@${{ env.PROTO_SHA }}`.
+            `lake build` passed with no `sorry` before this PR was opened.
 
-            `lake build` passed with no `sorry` before this PR was opened. The entry at the top of
-            `FORMAL_MIND.md` summarises the change; anything the bot could not prove is listed there.
+            ${{ steps.entry.outputs.body }}
+
+            🤖 formal-mind run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      - name: Report a failed reconciliation as an issue
+        if: ${{ failure() }}
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "The formal-mind bot could not reconcile the spec with \`$PROTO_REPO@$PROTO_SHA\` ($PROTO_MSG)."
+            echo
+            echo "Run: $RUN_URL"
+            echo
+            echo "Build errors (if the bot ran out of budget or left a proof open):"
+            echo
+            echo '```'
+            { grep -A6 '^error:' build.log 2>/dev/null | head -80; } || echo "(no build log: the bot step itself failed)"
+            echo '```'
+            echo
+            echo "Comment \`@formalmind retry\` here, or run the workflow by hand with the full sha, once the cause is fixed."
+          } > issue.md
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --title "formal-mind: reconciliation failed for $PROTO_REPO@${PROTO_SHA:0:7}" \
+            --body-file issue.md

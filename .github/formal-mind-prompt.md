@@ -25,5 +25,13 @@ Your job, in order:
    the truth. Do not edit or remove earlier entries.
 6. Finish with `lake build` passing. Do not commit; the workflow commits for you.
 
+Budget. You have about 200 tool calls and a few hours of wall clock. A `lake build` of the
+spec takes one to three minutes, so batch related edits and build once per batch, not after
+every edit. If the diff touches nothing the spec models, change no Lean file and write the
+changelog entry with "None" under Spec impact. If you are running low on budget, stop editing,
+make sure the current state builds with no `sorry`, and list what is left under Unproven gaps:
+a smaller honest entry beats a broken build. The workflow opens the pull request from your
+changelog entry and, if the build gate fails, an issue with the errors.
+
 Write Lean in the style already used: Option-returning transitions with a single conjunction
 guard, `simp only [...]`/`omega` proofs, `dsimp only` before `omega` when sums contain `if`.
