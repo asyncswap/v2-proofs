@@ -61,8 +61,8 @@ change". Tag `@mmsaki`.
 
 - **Merge:** use the API, not `gh pr merge` (which refuses client-side whenever the PR
   shows as blocked, even though the App may bypass the rule):
-  `gh api -X PUT repos/$REPO/pulls/NUMBER/merge -f merge_method=squash -f commit_title="<PR title> (#NUMBER)"`,
-  then delete the branch: `gh api -X DELETE repos/$REPO/git/refs/heads/BRANCH`. Then comment, starting
+  `gh api repos/$REPO/pulls/NUMBER/merge -X PUT -f merge_method=squash -f commit_title="<PR title> (#NUMBER)"`,
+  then delete the branch: `gh api repos/$REPO/git/refs/heads/BRANCH -X DELETE`. Then comment, starting
   `**merger**`: what landed, which thread claims you verified and how, why it is safe, and
   a permalink to the main changed file at the new `dev` head
   (`git fetch origin dev && git rev-parse origin/dev`). React 🚀 on the PR:

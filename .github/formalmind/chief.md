@@ -8,7 +8,7 @@ write.
 
 ## Gather
 
-- **The notebook.** `gh api --paginate "repos/$REPO/issues/$NOTEBOOK_ISSUE/comments?since=<today>T00:00:00Z"`.
+- **The notebook.** `gh api "repos/$REPO/issues/$NOTEBOOK_ISSUE/comments?since=<today>T00:00:00Z" --paginate`.
   Every `<!-- fm-note ... -->` comment is one run: its task list shows what was planned,
   done (`[x]`), dropped (`~~`), or left unticked; its **Verified** lines are claims; its
   **Left** lines are open ends.
