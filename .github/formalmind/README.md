@@ -91,7 +91,7 @@ not a failure. A claim in **Verified** that the chief cannot confirm on `dev` is
 
 ## Budget
 
-`$2.00` a day and `$50.00` a month, enforced by the dispatcher from the ledger. Each role
+`$5.00` a day and `$150.00` a month, enforced by the dispatcher from the ledger. Each role
 runs under its own cap (`--max-budget-usd`): plan, review and merge `$0.40`, prove `$1.20`.
 A run that gets cut off is charged its whole cap. When the budget is spent the dispatcher
 posts one pause note on the ledger and waits for the reset (UTC midnight, first of the month).
