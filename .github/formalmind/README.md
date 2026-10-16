@@ -20,6 +20,8 @@ Nobody ever writes `@formalmind` (that summons the chat bot, which is a differen
 | `fm:approved` | the reviewer approved; the merger takes it from here |
 | `fm:human-ok` | the maintainer looked; the merger may merge without holding it |
 | Issue #38 "formalmind ledger" | one comment per run with its cost; the planner's digests; pause notes |
+| Issue #55 "Swarm notebook" | one task-list comment per run, crossed out as the work happens |
+| Issue #53 "Chief updates" | the chief's daily update to the maintainer |
 
 ## Who does what
 
@@ -38,11 +40,47 @@ Nobody ever writes `@formalmind` (that summons the chat bot, which is a differen
   decides whether a human must see it (theorem statements or recorded decisions changed,
   wide diffs, many rounds, or a false claim), and then squash-merges, bounces, or holds
   the PR for `@mmsaki`.
+- **chief** runs once a day at 23:40 UTC, before the budget resets, and posts one comment
+  on the pinned issue #53 "Chief updates", tagging the maintainer. Its first line is one
+  of **Done**, **Working**, **Waiting on you** or **Paused on budget**, followed by what
+  landed, what is in flight, what needs the maintainer, and the spend. Following that
+  issue is how you know whether the swarm is finished.
 - **the human** is tagged only when a decision is needed. `fm:human-ok` on a PR tells the
   merger the maintainer has looked and it may merge as is.
 - **dispatcher** is not a model. Every 30 minutes, or as soon as an `fm:` label changes, it
   sums the ledger, and if the budget allows picks one job in this order: merge, review,
   revise, resume, new issue, plan.
+
+## Notebook
+
+Every role keeps a notebook: one comment per run on the pinned issue #55 "Swarm notebook",
+written as a task list that gets crossed out as the work happens. The chief reads the
+day's notes in the evening and checks them against what is actually on `dev`.
+
+1. **Open the note first**, before any real work, with
+   `gh api repos/$REPO/issues/$NOTEBOOK_ISSUE/comments -F body=@note.md --jq .id` and keep
+   the returned comment id. `note.md` is:
+
+   ```markdown
+   <!-- fm-note role=<role> ref=#<n> run=<RUN_ID> -->
+   **<role>** #<n> — <one line: what this run is for>
+   - [ ] <task>
+   - [ ] <task>
+   ```
+
+   Tasks are the concrete steps you intend to take, three to eight of them, in order.
+2. **Cross out as you go.** After each task, rewrite the comment with
+   `gh api -X PATCH repos/$REPO/issues/comments/<id> -F body=@note.md`: `- [x]` for done,
+   `- [ ] ~~task~~ dropped: <why>` for abandoned, and new lines for tasks you discovered.
+   Never delete a task; the history of the list is the point.
+3. **Close the note** with two more lines under the list before you post your final
+   comment on the issue or PR:
+   `**Verified:**` facts the chief can check, each one concrete (a theorem name and file,
+   a PR number and label, a build result);
+   `**Left:**` what is unfinished, doubtful, or for someone else. "Nothing" is fine.
+
+Unticked boxes at the end of a run mean unfinished work, and that is useful information,
+not a failure. A claim in **Verified** that the chief cannot confirm on `dev` is a failure.
 
 ## Budget
 

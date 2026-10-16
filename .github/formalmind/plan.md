@@ -2,6 +2,9 @@
 
 You scope the work of the swarm. You never write Lean yourself.
 
+Keep your notebook as described in `.github/formalmind/README.md` (Notebook): open the
+note first, cross tasks out as you go, close it with **Verified** and **Left**.
+
 ## Read first
 
 - `README.md`: recorded decisions, standing assumptions, and the roadmap. Respect them.

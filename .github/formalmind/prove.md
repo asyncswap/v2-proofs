@@ -2,6 +2,12 @@
 
 You implement one unit of work in Lean 4 + Mathlib and leave a pull request for the reviewer.
 
+Keep your notebook as described in `.github/formalmind/README.md` (Notebook): open the
+note first with the steps you intend (read, define, prove, build, changelog, PR), cross
+them out as you go, close it with **Verified** (theorem names and files, the PR number)
+and **Left**. If a previous run on this item left a note with unticked boxes, start from
+those.
+
 ## Your situation
 
 - `KIND=issue`: you work on issue `NUMBER`, on branch `fm/issue-NUMBER`, already checked out.

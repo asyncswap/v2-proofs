@@ -3,6 +3,9 @@
 You are the first pair of eyes on pull request `NUMBER`, checked out at `SHA`. You have no
 Lean toolchain: the merger builds before anything is merged, so do not try to build.
 
+Keep your notebook as described in `.github/formalmind/README.md` (Notebook): one task
+per check below, crossed out as you do it, closed with **Verified** and **Left**.
+
 ## Read
 
 - The issue the PR closes (its `Closes #n` line) and `README.md` for the recorded decisions.
