@@ -6,6 +6,35 @@ could not be proved, and what the build said. Humans may add entries too; keep t
 
 <!-- formal-mind: insert new entries directly below this line -->
 
+## 2026-10-16 — asyncswap/v2-proofs issue #52 — spec: user claim balances stay non-negative across every v2 entry point
+
+**Trigger:** swarm issue #52.
+
+**Contract change.** None.
+
+**Spec impact.** New `AsyncSwapProtocol/V2/ClaimsNonNeg.lean`, imported from the
+`AsyncSwapProtocol` root. `Invariants.lean`, `Settlement.lean` and `NonNeg.lean` untouched; the
+`Finset.sum_nonneg` fact for `owed` is re-proved locally (`owed_nonneg'`) so this module does not
+depend on PR #51.
+
+**Theorems added.** `ClaimsNonNeg` (`∀ c a, 0 ≤ w.claims c a`); `Grows` (between two points of a
+transaction no claim balance off the hook went down) with `grows_refl`, `grows_trans` and one
+`grows_*` lemma per ledger operation and hook body (`grows_mint`, `grows_burn_hook`,
+`grows_payOutBody`, `grows_settleBidBody`, `grows_matchLoop`, `grows_fillBody`,
+`grows_cancelBody`, `grows_liquidityFillBody`, …); `ClaimsNonNeg.of_grows` (off-hook balances
+from `Grows`, the hook's from `Escrow` after the step); `redeemNative_claims_nonneg` (the burn is
+guarded by `amount ≤ claims false sender`); `step_claims_nonneg` (every v2 entry point preserves
+`ClaimsNonNeg`, under `Escrow` and the same environment assumptions as `step_escrow`).
+
+**Theorems changed or weakened.** None.
+
+**Unproven gaps.** No entry point debits an off-hook claim without a guard in the model: every
+`burn` in a hook body burns the hook's own claim, and `redeemNative` checks the caller's balance
+first. So `step_claims_nonneg` needs no extra hypothesis. Still open: non-negativity of
+PoolManager-side totals (`Backing`) and of the native-ETH ledger entries.
+
+**Build.** `lake build` clean, no `sorry`, no new axioms.
+
 ## 2026-10-16 — asyncswap/v2-proofs issue #46 — spec: hook claim balances are non-negative under Escrow
 
 **Trigger:** swarm issue #46 (taken by the maintainer).
