@@ -16,6 +16,7 @@ lake exe cache get   # Mathlib build cache
 lake build
 ```
 
+`FORMAL_MIND.md` is the changelog of every bot run (and of human changes that touch theorems).
 CI runs `lake build` only on pushes to `main` (`.github/workflows/lean.yml`); pull requests are reviewed, not built.
 Pushes to the protocol repositories trigger the formal-mind bot (`.github/workflows/formal-mind.yml`),
 which updates the spec for the new commit and opens a pull request here.

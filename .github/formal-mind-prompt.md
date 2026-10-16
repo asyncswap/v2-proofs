@@ -11,13 +11,19 @@ Your job, in order:
    `AsyncSwapProtocol/Model.lean` models the Router / PoolManager / hook call sequence.
 2. Update the Lean definitions so they again say exactly what the Solidity does. Keep the
    existing theorem statements unless the contract change genuinely invalidates one; if it
-   does, change the statement minimally and say why in `FORMAL_MIND_NOTES.md`.
+   does, change the statement minimally and say why in your changelog entry.
 3. Run `lake build`. Fix every proof that breaks. Never use `sorry`, `admit`, or new axioms.
    If you cannot close a proof, revert that theorem to the last provable form and record the
-   gap in `FORMAL_MIND_NOTES.md` with the exact statement that is now unproven.
+   gap in your changelog entry with the exact statement that is now unproven.
 4. If the diff adds a new state-changing entry point, add it to the relevant state machine
    (`Action` / `step`) with its guard and body, and prove the existing invariants for it.
-5. Finish with `lake build` passing. Do not commit; the workflow commits for you.
+5. Add one entry to `FORMAL_MIND.md`, the changelog, directly below the marker line
+   `<!-- formal-mind: insert new entries directly below this line -->` (newest first). Follow
+   the shape of the existing entries exactly: heading `## <date> — <repo> @ <short sha> —
+   <commit title>`, then **Trigger**, **Contract change**, **Spec impact**, **Theorems added**,
+   **Theorems changed or weakened**, **Unproven gaps**, **Build**. Write "None" where that is
+   the truth. Do not edit or remove earlier entries.
+6. Finish with `lake build` passing. Do not commit; the workflow commits for you.
 
 Write Lean in the style already used: Option-returning transitions with a single conjunction
 guard, `simp only [...]`/`omega` proofs, `dsimp only` before `omega` when sums contain `if`.
