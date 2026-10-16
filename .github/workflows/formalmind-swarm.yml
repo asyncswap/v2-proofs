@@ -42,6 +42,7 @@ concurrency:
 env:
   LEDGER_ISSUE: "38"
   CHIEF_ISSUE: "53"
+  NOTEBOOK_ISSUE: "55"
   DAILY_USD: "2.00"
   MONTHLY_USD: "50.00"
   CAP_PLAN: "0.40"
@@ -251,7 +252,8 @@ jobs:
       - name: Tools for this role
         id: tools
         run: |
-          base="Read,Glob,Grep,Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(git status:*),Bash(git rev-parse:*),Bash(git branch:*),Bash(git fetch:*),Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh issue edit:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr edit:*),Bash(gh api repos/$GITHUB_REPOSITORY:*)"
+          # Write is for note.md and reply files; no role but prove can commit or push.
+          base="Read,Write,Glob,Grep,Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(git status:*),Bash(git rev-parse:*),Bash(git branch:*),Bash(git fetch:*),Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh issue edit:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr edit:*),Bash(gh api repos/$GITHUB_REPOSITORY:*)"
           case "$ROLE" in
             plan) allowed="$base,Bash(gh issue create:*)" ;;
             chief) allowed="$base,Bash(gh run list:*)" ;;
@@ -287,6 +289,8 @@ jobs:
             BUDGET_USD=${{ env.CAP }}
             LEDGER_ISSUE=${{ env.LEDGER_ISSUE }}
             CHIEF_ISSUE=${{ env.CHIEF_ISSUE }}
+            NOTEBOOK_ISSUE=${{ env.NOTEBOOK_ISSUE }}
+            RUN_ID=${{ github.run_id }}
             RUN_URL=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           claude_args: >-
             --allowedTools "${{ steps.tools.outputs.allowed }}"

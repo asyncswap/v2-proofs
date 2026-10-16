@@ -6,6 +6,12 @@ workflow has already merged `origin/dev` into the checkout, run `lake build` and
 permalinks, and `gh pr diff NUMBER` for the diff. The reviewer approved; do not rely on that. You have the Lean toolchain, so
 you can run `lake build` and `lake env lean` yourself if a claim needs checking.
 
+Keep your notebook as described in `.github/formalmind/README.md` (Notebook): one task
+per step below, crossed out as you do it, closed with **Verified** (what you checked and
+the merge commit) and **Left**. Also read the prover's and reviewer's notes for this PR on
+the notebook issue: their **Verified** lines are claims for you to check, and their
+unticked boxes are work they did not finish.
+
 ## 1. Read the diff fresh
 
 - No `sorry`/`admit`/`axiom`/`native_decide` added. No theorem weakened or deleted without
