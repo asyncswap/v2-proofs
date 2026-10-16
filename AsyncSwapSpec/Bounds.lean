@@ -19,7 +19,7 @@ whose exhaustion would stop the book.
 | `_matchAmounts` `mulDiv(sell.in, buy.in, buy.min)` etc. | both inputs `< 2^128` ⇒ every intermediate `< 2^256` |
 | `_settleMatchedPriorityFee` `mulDiv(fee, used, old)` | always `≤ fee < 2^64` |
 | `uint64 sequence` | the `n`-th order or reprice gets sequence `n`; fits while `n ≤ 2^64 − 1` |
-| `uint32` radix node ids | never reused; the `n`-th distinct price level needs id `2n − 1`; `insert` reverts (`NodeIdOverflow`) once `2n − 1 > 2^32 − 1`, i.e. from the 2^31-th level on |
+| `uint32` radix node ids | recycled by `remove` (fix for the exhaustion finding); the counter tracks the peak number of simultaneous levels, so `insert` cannot overflow while fewer than `2^31` prices are stored at once |
 -/
 
 namespace AsyncSwap
@@ -99,23 +99,71 @@ def sequenceAfter (n : ℕ) : ℕ := n
 
 theorem sequence_fits_uint64 {n : ℕ} (h : n ≤ maxUint64) : sequenceAfter n ≤ maxUint64 := h
 
-/-- `RadixPriceTree._newNode` ids are allocated by `++nextNodeId` and never reused by
-    `remove`; the first distinct price costs one id (a leaf), every later one two (leaf +
-    branch).  After `n ≥ 1` distinct levels have been inserted into one tree, `nextNodeId = 2n − 1`. -/
-def nodeIdsAfter (n : ℕ) : ℕ := if n = 0 then 0 else 2 * n - 1
+/-! ### Radix node ids with recycling (fix for the exhaustion finding)
 
-theorem nodeIdsAfter_succ (n : ℕ) (hn : 0 < n) : nodeIdsAfter (n + 1) = nodeIdsAfter n + 2 := by
-  unfold nodeIdsAfter; split_ifs <;> omega
+`RadixPriceTree._newNode` pops a released id from `freeIds` before growing `nextNodeId`, and
+`remove` releases the ids of the deleted leaf and branch.  Modelled as a counter machine: a
+`Tree` holds `levels` live prices, `next` is the high-water mark of ids ever handed out and
+`free` the number of released ids.  Live ids are `2·levels − 1` (one leaf per price, one
+branch per price beyond the first). -/
 
-/-- **Longevity bound.** `_newNode` reverts with `NodeIdOverflow` when the incremented id wraps
-    to `0`, i.e. when `nextNodeId = 2^32 − 1` before the allocation.  Inserting the `(n+1)`-th
-    distinct level needs two ids, so it succeeds iff `2n + 1 ≤ 2^32 − 1`: a single pool-side
-    tree can admit at most `2^31 − 1` further distinct price levels after the first.  (Ids are
-    per tree: bids, asks and each priority level have their own counter.) -/
-theorem insert_level_fits {n : ℕ} (hn : 0 < n) : nodeIdsAfter (n + 1) ≤ 2 ^ 32 - 1 ↔ n ≤ 2 ^ 31 - 1 := by
-  unfold nodeIdsAfter
-  rw [if_neg (Nat.succ_ne_zero n)]
-  norm_num
-  omega
+structure IdAlloc where
+  levels : ℕ
+  next : ℕ
+  free : ℕ
+  deriving Repr, DecidableEq
+
+/-- Ids in use for `levels` live prices. -/
+def liveIds (levels : ℕ) : ℕ := if levels = 0 then 0 else 2 * levels - 1
+
+/-- `insert` of a new price: needs `liveIds (levels+1) − liveIds levels` fresh ids, each taken
+    from the free list first. -/
+def IdAlloc.insert (a : IdAlloc) : IdAlloc :=
+  let need := liveIds (a.levels + 1) - liveIds a.levels
+  let fromFree := min need a.free
+  { levels := a.levels + 1, next := a.next + (need - fromFree), free := a.free - fromFree }
+
+/-- `remove`: the leaf and (unless it was the root) the branch are released. -/
+def IdAlloc.remove (a : IdAlloc) : IdAlloc :=
+  if a.levels = 0 then a
+  else { levels := a.levels - 1, next := a.next, free := a.free + (liveIds a.levels - liveIds (a.levels - 1)) }
+
+/-- The allocator invariant: every id ever handed out is either live or free. -/
+def IdAlloc.Wf (a : IdAlloc) : Prop := a.next = liveIds a.levels + a.free
+
+theorem liveIds_succ (n : ℕ) : liveIds (n + 1) - liveIds n = if n = 0 then 1 else 2 := by
+  cases n <;> simp [liveIds] <;> omega
+
+theorem IdAlloc.wf_insert {a : IdAlloc} (h : a.Wf) : a.insert.Wf := by
+  simp only [IdAlloc.Wf, IdAlloc.insert] at *
+  unfold liveIds at *
+  split_ifs at * <;> omega
+
+theorem IdAlloc.wf_remove {a : IdAlloc} (h : a.Wf) : a.remove.Wf := by
+  simp only [IdAlloc.Wf, IdAlloc.remove] at *
+  split_ifs with h0
+  · exact h
+  · simp only []
+    unfold liveIds at *
+    split_ifs at * <;> omega
+
+/-- **With recycling, the counter is the peak of live ids, not the history.**  `next` is
+    `liveIds levels + free`, and `free` only holds ids that were live earlier, so `next` is
+    bounded by the ids of the peak number of simultaneously stored prices. -/
+theorem IdAlloc.next_le_peak {a : IdAlloc} (h : a.Wf) (peak : ℕ) (hp : a.levels ≤ peak)
+    (hfree : a.free ≤ liveIds peak - liveIds a.levels) : a.next ≤ liveIds peak := by
+  simp only [IdAlloc.Wf] at h
+  unfold liveIds at *
+  split_ifs at * <;> omega
+
+/-- **`insert` never reverts on ids** while the peak number of simultaneous prices is below
+    `2^31`: the id handed out is at most `liveIds peak ≤ 2^32 − 3`.  Holding `2^31` prices at
+    once needs `2^31` storage slots, so this is unreachable. -/
+theorem IdAlloc.insert_no_overflow {a : IdAlloc} (h : a.Wf) (peak : ℕ) (hp : a.levels + 1 ≤ peak)
+    (hfree : a.free ≤ liveIds peak - liveIds a.levels) (hpeak : peak ≤ 2 ^ 31 - 1) :
+    a.insert.next ≤ 2 ^ 32 - 1 := by
+  simp only [IdAlloc.Wf, IdAlloc.insert] at *
+  unfold liveIds at *
+  split_ifs at * <;> omega
 
 end AsyncSwap
