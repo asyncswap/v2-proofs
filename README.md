@@ -34,6 +34,7 @@ this repository should be read against them; change them here first if the proto
 | 2 | Arithmetic model | **Unbounded ℕ/ℤ plus explicit bounds.** Amounts stay unbounded; per-entry-point theorems state the input bounds under which no intermediate exceeds `2^256` (and `uint128` / `uint64` for price keys and bids). | No wraparound semantics anywhere. A theorem about overflow is always of the form "under these input bounds, this intermediate is < 2^N". |
 | 3 | Target contracts for the call-sequence state machine (`AsyncSwapProtocol`) | **Extend to v2.** One model should cover the active codebase: priority-bid escrow in the create unlock, `matchNewOrder`, `matchBook`, `fillFromPoolLiquidity`, `NativeClaims`. | `AsyncSwapProtocol` currently mirrors the production repo at `fcf75d4`; the v2 extension is the next milestone (see roadmap). |
 | 5 | Fix for radix node-id exhaustion (2026-10-16) | **Recycle freed ids**, keep `uint32`. Rejected: widen to `uint64` (two-slot `Node`), accept-and-document. | `remove` releases ids to a free list; the spec's exhaustion assumption becomes a theorem about the peak number of live levels. |
+| 6 | How to model `keccak256` for EIP-712 / Permit2 (2026-10-16) | **Symbolic preimages + collision-freedom.** `keccak256` is an arbitrary injective function on the preimages the contracts build (type strings, `abi.encode` word tuples, the EIP-712 envelope). Rejected: concrete Keccak (no proof leverage), identity "hash" (unfaithful). | Binding theorems are exact: a signature commits to precisely the listed fields, and `sqrtPrice` / `salt` are provably *not* covered by the Permit2 witness (by design: v4 never reads the limit, the hook assigns the salt). |
 | 4 | Periphery in verified scope | **All of:** radix-tree storage refinement; native-ETH transient ledger (incl. v2 `NativeClaims`); EIP-712 / Permit2 struct hashing and witness binding; `FeeVault.collect` and `sweep`. | Signature validity moves from an abstract oracle to a hashing model; the pointer-level `RadixPriceTree` gets a refinement proof against `AsyncSwapSpec/RadixTree.lean`. |
 
 ### Standing modelling assumptions
@@ -50,8 +51,12 @@ this repository should be read against them; change them here first if the proto
   only currency0 possibly native. Multi-pool state is a product of these.
 - **Ledgers are signed integers** so conservation is unconditional; non-negativity is a
   proved invariant, not a modelling assumption.
-- **Signatures** (`SignatureChecker`, ERC-1271, Permit2) are an oracle over the exact fields
-  each struct hash commits to, until decision 4's hashing model lands.
+- **Signatures** (`SignatureChecker`, ERC-1271, Permit2) are an oracle over the digest the
+  maker signed; `Hashing.lean` says which fields that digest commits to (decision 6). The
+  only property of `keccak256` used is collision-freedom on the symbolic preimages the
+  contracts hash (type strings, `abi.encode` tuples, the `\x19\x01` envelope).
+- **A pool's two currencies differ** (`currency0 < currency1`, enforced by Uniswap v4); only
+  under this does the Permit2 witness pin the order's direction (`tokens_inj`).
 - **Events, gas and reverts' reasons** are not modelled; a transaction is `Option World`.
 - **Fewer than `2^31` price levels are stored at once** per radix tree. With id recycling
   (roadmap item 7, decision: recycle) this is the only way `insert` can revert on ids
@@ -90,7 +95,11 @@ this repository should be read against them; change them here first if the proto
    `PriceIndex.best_refines`, `PriceIndex.insert_refines`, `PriceIndex.remove_refines` show
    each operation stores exactly the verified `PriceIndex` operation (`remove` of an absent
    price is the `PriceLevelMissing` revert, `insert` reports `created` iff the price was new).
-6. **Hashing model** (decision 4): EIP-712 / Permit2 struct hashes and witness binding.
+6. ~~**Hashing model**~~ (decisions 4, 6) — done (`AsyncSwapSpec/Hashing.lean`): symbolic
+   `keccak256` assumed collision-free; `OrderSignatures.sol` struct hashes, OpenZeppelin
+   domain separator / digest, Permit2 witness struct hash and `orderId` transcribed; witness
+   binding for `swapWithSig`, `setExecutorWithSig`, `updatePriceWithSig`, `cancelWithSig`;
+   type separation between every struct type; domain separation across contracts and chains.
 7. ~~**Node-id exhaustion fix**~~ — decision: **recycle freed ids** (keeps the one-slot
    `Node`). Implemented in `asyncswap/v2` `RadixPriceTree.sol` (free list popped by
    `_newNode`), with the allocator proved in `Bounds.lean`.
