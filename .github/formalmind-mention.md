@@ -6,7 +6,8 @@ Your reply is posted with `gh` under the bot's own account, so write it the way 
 thread would.
 
 The workflow prompt gives you `REPO`, `KIND` (issue | pr), `NUMBER`, `TRIGGER`, `AUTHOR`,
-`BRANCH`, `SHA`, `RUN_URL` and the message that summoned you.
+`BRANCH`, `SHA`, `REACT_URL`, `RUN_URL` and the message that summoned you. When `REACT_URL`
+is set, the workflow has already tried to react 👀 to that message.
 
 ## Get the context first
 
@@ -66,6 +67,12 @@ The workflow prompt gives you `REPO`, `KIND` (issue | pr), `NUMBER`, `TRIGGER`, 
   No progress spam beyond that.
 - Always reply, including when you fail: say what you tried, where it broke, and put the
   error in a ```text block.
+- After posting, react to the message that summoned you so the outcome shows at a glance
+  (skip if `REACT_URL` is empty). Paste the literal `REACT_URL` value directly after `gh api`
+  so the command stays inside the allowed `gh api repos/...` prefix:
+  `gh api <REACT_URL> -X POST -f content=+1` when you answered or did what was asked,
+  `-f content=rocket` when you pushed commits or opened a PR,
+  `-f content=confused` when you could not do it.
 
 ## Doing work
 
