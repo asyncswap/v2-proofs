@@ -98,21 +98,27 @@ def insert (T : Tree) (price : ℕ) (fuel : ℕ) : Tree × Bool :=
     else T6.setNode parentId { T6.nodes parentId with right := branchId }
   (T7, true)
 
+/-- The pointer surgery of `remove` for a non-root leaf: the grandparent (or the root slot)
+    now points at the sibling, the sibling's parent becomes the grandparent, and the branch and
+    leaf are released. `goLeft` records which child of the grandparent the branch was. -/
+def relink (T : Tree) (leafId branchId siblingId grandId : ℕ) (goLeft : Bool) : Tree :=
+  let T2 :=
+    if grandId = 0 then { T with root := siblingId }
+    else if goLeft then T.setNode grandId { T.nodes grandId with left := siblingId }
+    else T.setNode grandId { T.nodes grandId with right := siblingId }
+  let T3 := T2.setNode siblingId { T2.nodes siblingId with parent := grandId }
+  (T3.freeNode branchId).freeNode leafId
+
 /-- `remove(self, price)`; `none` models the `PriceLevelMissing` revert. -/
 def remove (T : Tree) (price : ℕ) : Option Tree :=
   let leafId := T.leaves price
   if leafId = 0 then none else
   let T1 := T.setLeaf price 0
-  if leafId = T1.root then some ((T1.freeNode leafId) |> fun T' => { T' with root := 0 }) else
+  if leafId = T1.root then some { (T1.freeNode leafId) with root := 0 } else
   let branchId := (T1.nodes leafId).parent
   let siblingId := if (T1.nodes branchId).left = leafId then (T1.nodes branchId).right else (T1.nodes branchId).left
   let grandId := (T1.nodes branchId).parent
-  let T2 :=
-    if grandId = 0 then { T1 with root := siblingId }
-    else if (T1.nodes grandId).left = branchId then T1.setNode grandId { T1.nodes grandId with left := siblingId }
-    else T1.setNode grandId { T1.nodes grandId with right := siblingId }
-  let T3 := T2.setNode siblingId { T2.nodes siblingId with parent := grandId }
-  some ((T3.freeNode branchId).freeNode leafId)
+  some (T1.relink leafId branchId siblingId grandId ((T1.nodes grandId).left = branchId))
 
 end Tree
 
