@@ -1,0 +1,53 @@
+name: "@formalmind"
+
+# Tag @formalmind in an issue, pull request, review or comment to summon the bot. It answers
+# in the thread and, on a pull request, can push commits to the PR branch.
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+  issues:
+    types: [opened, assigned]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+
+jobs:
+  formalmind:
+    if: |
+      contains(github.event.comment.body, '@formalmind') ||
+      contains(github.event.review.body, '@formalmind') ||
+      contains(github.event.issue.body, '@formalmind') ||
+      contains(github.event.issue.title, '@formalmind')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install elan
+        run: |
+          curl -sSfL https://elan.lean-lang.org/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .lake
+            ~/.cache/mathlib
+          key: lake-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}
+          restore-keys: lake-${{ runner.os }}-
+      - run: lake exe cache get
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          trigger_phrase: "@formalmind"
+          claude_args: >-
+            --allowedTools "Bash(lake *),Bash(git diff *),Bash(git log *),Bash(git status *),Read,Edit,Write,Glob,Grep"
+            --max-turns 80
+            --append-system-prompt "You are formal-mind, the maintainer's assistant for this Lean 4 + Mathlib specification of the Async Swap protocol. Read README.md first: it holds the recorded decisions, standing assumptions and roadmap, which you must respect. Never use sorry, admit or new axioms; run lake build before claiming anything is proved; record any gap in FORMAL_MIND_NOTES.md."
