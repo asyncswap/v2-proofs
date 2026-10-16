@@ -26,6 +26,8 @@ jobs:
       contains(github.event.issue.body, '@formalmind') ||
       contains(github.event.issue.title, '@formalmind')
     runs-on: ubuntu-latest
+    env:
+      FORMALMIND_APP_ID: ${{ secrets.FORMALMIND_APP_ID }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -44,7 +46,7 @@ jobs:
       - run: lake exe cache get
       - name: formalmind App token (comments and PRs appear as formalmind[bot])
         id: app
-        if: ${{ secrets.FORMALMIND_APP_ID != '' }}
+        if: ${{ env.FORMALMIND_APP_ID != '' }}
         uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ secrets.FORMALMIND_APP_ID }}

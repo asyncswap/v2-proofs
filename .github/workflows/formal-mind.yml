@@ -24,6 +24,7 @@ jobs:
   reconcile:
     runs-on: ubuntu-latest
     env:
+      FORMALMIND_APP_ID: ${{ secrets.FORMALMIND_APP_ID }}
       PROTO_REPO: ${{ github.event.client_payload.repo || inputs.repo }}
       PROTO_SHA: ${{ github.event.client_payload.sha || inputs.sha }}
       PROTO_MSG: ${{ github.event.client_payload.message || 'manual run' }}
@@ -59,7 +60,7 @@ jobs:
           git diff HEAD~1 HEAD -- src >> ../protocol-diff.txt 2>/dev/null || true
       - name: formalmind App token (comments and PRs appear as formalmind[bot])
         id: app
-        if: ${{ secrets.FORMALMIND_APP_ID != '' }}
+        if: ${{ env.FORMALMIND_APP_ID != '' }}
         uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ secrets.FORMALMIND_APP_ID }}
