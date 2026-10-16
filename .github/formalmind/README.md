@@ -53,10 +53,10 @@ Nobody ever writes `@formalmind` (that summons the chat bot, which is a differen
 
 ## One rule for every `gh api` call
 
-The tool allowlist is a prefix match on `gh api repos/<this repo>`. Write the path first
-and every flag after it: `gh api repos/$REPO/... -X PATCH -F body=@file`. A command that
-starts with `gh api -X ...` or `gh api --paginate ...` is refused and your run silently
-loses that step.
+Write the path first and every flag after it: `gh api repos/$REPO/... -X PATCH -F body=@file`.
+The tool allowlist matches commands word by word, so `gh api` must be the first two words;
+a command that starts with `gh api -X ...` or `gh api --paginate ...` is refused and your
+run silently loses that step. Only call paths under `repos/$REPO/`.
 
 ## Notebook
 
