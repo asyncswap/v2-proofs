@@ -74,7 +74,7 @@ jobs:
           esac
           # 👀 on the message right away, so the author knows the bot saw it
           if [ -n "$react_url" ]; then
-            gh api -X POST "$react_url" -f content=eyes --silent || true
+            gh api -X POST "$react_url" -f content=eyes --silent || echo "::warning::could not react to $react_url"
           fi
           if [ "$kind" = pr ]; then
             gh pr checkout "$number"
