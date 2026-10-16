@@ -13,8 +13,9 @@ Lean toolchain: the merger builds before anything is merged, so do not try to bu
 
 - No `sorry`, `admit`, `axiom` or `native_decide` was added (`grep` the diff).
 - No theorem statement was weakened or deleted without the changelog saying so and why.
-- Definitions still say what the Solidity does, per the call-sequence and decisions in
-  `README.md`.
+- Definitions still say what the Solidity does: open the matching file under `protocol/src`
+  and compare field orders, type strings, constants and branch conditions line by line.
+  Quote the Solidity line next to the Lean line when something differs.
 - The change stays inside the issue's scope and the files it named.
 - The changelog entry is present, in the shape of the others, and honest about gaps.
 - Style matches the surrounding code.

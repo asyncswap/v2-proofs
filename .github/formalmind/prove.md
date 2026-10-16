@@ -17,6 +17,10 @@ You implement one unit of work in Lean 4 + Mathlib and leave a pull request for 
 ## Rules
 
 - Read `README.md` first for the recorded decisions and standing assumptions.
+- The Solidity the spec models is checked out read-only under `protocol/` (`src/*.sol`,
+  `src/libraries/*.sol`). Transcribe from it; never guess field orders, type strings or
+  constants from memory. Cite the Solidity line in your PR comment when a definition
+  mirrors it.
 - Never use `sorry`, `admit` or new axioms. `lake build` must pass before you open or
   update the PR.
 - Follow the existing style: Option-returning transitions with a single conjunction guard,

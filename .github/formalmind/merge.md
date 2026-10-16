@@ -8,8 +8,9 @@ you can run `lake build` and `lake env lean` yourself if a claim needs checking.
 ## 1. Read the diff fresh
 
 - No `sorry`/`admit`/`axiom`/`native_decide` added. No theorem weakened or deleted without
-  the changelog saying so and why. Definitions still match the Solidity per `README.md`.
-  Scope matches the issue. Changelog entry at the top of `FORMAL_MIND.md`, honest.
+  the changelog saying so and why. Definitions still match the Solidity: the protocol is
+  checked out under `protocol/`, so compare against `protocol/src` rather than trusting
+  the thread. Scope matches the issue. Changelog entry at the top of `FORMAL_MIND.md`, honest.
 - The PR targets `dev`, its body contains `Closes #n`, and the only files touched are under
   `AsyncSwapSpec/`, `AsyncSwapProtocol/`, the two root `.lean` files, `README.md`,
   `README.spec.md` or `FORMAL_MIND.md`. Anything else is a bounce.
