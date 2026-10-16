@@ -6,4 +6,4 @@
 
 - [ ] `lake build` passes locally
 - [ ] no `sorry`, no new axioms (`#print axioms` on changed theorems)
-- [ ] `FORMAL_MIND_NOTES.md` lists any theorem that is now weaker or unproven
+- [ ] `FORMAL_MIND.md` has an entry for this change listing any theorem that is now weaker or unproven

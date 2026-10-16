@@ -88,7 +88,7 @@ jobs:
             AsyncSwapSpec.lean
             AsyncSwapProtocol.lean
             README.md
-            FORMAL_MIND_NOTES.md
+            FORMAL_MIND.md
           title: "formal-mind: reconcile spec with ${{ env.PROTO_REPO }}@${{ env.PROTO_SHA }}"
           commit-message: |
             spec: reconcile with ${{ env.PROTO_REPO }}@${{ env.PROTO_SHA }}
@@ -97,5 +97,5 @@ jobs:
           body: |
             Automated reconciliation of the Lean spec with `${{ env.PROTO_REPO }}@${{ env.PROTO_SHA }}`.
 
-            `lake build` passed with no `sorry` before this PR was opened. Review the theorem
-            changes; anything the bot could not prove is listed in `FORMAL_MIND_NOTES.md`.
+            `lake build` passed with no `sorry` before this PR was opened. The entry at the top of
+            `FORMAL_MIND.md` summarises the change; anything the bot could not prove is listed there.
