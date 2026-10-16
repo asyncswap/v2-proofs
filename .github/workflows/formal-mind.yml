@@ -74,6 +74,13 @@ jobs:
         with:
           base: dev
           branch: formal-mind/${{ env.PROTO_SHA }}
+          add-paths: |
+            AsyncSwapSpec/**
+            AsyncSwapProtocol/**
+            AsyncSwapSpec.lean
+            AsyncSwapProtocol.lean
+            README.md
+            FORMAL_MIND_NOTES.md
           title: "formal-mind: reconcile spec with ${{ env.PROTO_REPO }}@${{ env.PROTO_SHA }}"
           commit-message: |
             spec: reconcile with ${{ env.PROTO_REPO }}@${{ env.PROTO_SHA }}

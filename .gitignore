@@ -1,1 +1,4 @@
 .lake/
+# formal-mind bot scratch: protocol checkout and its diff
+protocol/
+protocol-diff.txt
