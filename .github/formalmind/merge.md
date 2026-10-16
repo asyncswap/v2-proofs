@@ -52,7 +52,10 @@ change". Tag `@mmsaki`.
 
 ## 4. Act
 
-- **Merge:** `gh pr merge NUMBER --squash --delete-branch`. Then comment, starting
+- **Merge:** use the API, not `gh pr merge` (which refuses client-side whenever the PR
+  shows as blocked, even though the App may bypass the rule):
+  `gh api -X PUT repos/$REPO/pulls/NUMBER/merge -f merge_method=squash -f commit_title="<PR title> (#NUMBER)"`,
+  then delete the branch: `gh api -X DELETE repos/$REPO/git/refs/heads/BRANCH`. Then comment, starting
   `**merger**`: what landed, which thread claims you verified and how, why it is safe, and
   a permalink to the main changed file at the new `dev` head
   (`git fetch origin dev && git rev-parse origin/dev`). React 🚀 on the PR:
@@ -60,8 +63,9 @@ change". Tag `@mmsaki`.
 - **Bounce:** `gh pr edit NUMBER --remove-label fm:approved --add-label fm:changes` (or
   `fm:needs-rebase`), inline comments on the exact lines, and a summary comment starting
   `**merger**` ending with `@fm-prover`.
-- **Merge refused** by GitHub (a rule, a conflict): comment the exact error in a ```text
+- **Merge refused** by the API (a rule, a conflict): comment the exact error in a ```text
   block, `gh pr edit NUMBER --add-label fm:blocked --remove-label fm:approved`, tag `@mmsaki`.
+  Removing `fm:approved` matters: it is what stops the dispatcher from retrying every sweep.
 
 ## Voice
 

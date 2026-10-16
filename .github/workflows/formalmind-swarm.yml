@@ -238,7 +238,7 @@ jobs:
           case "$ROLE" in
             plan) allowed="$base,Bash(gh issue create:*)" ;;
             review) allowed="$base,mcp__github_inline_comment__create_inline_comment" ;;
-            merge) allowed="$base,mcp__github_inline_comment__create_inline_comment,Bash(gh pr merge:*),Bash(lake:*),Write" ;;
+            merge) allowed="$base,mcp__github_inline_comment__create_inline_comment,Bash(lake:*),Write" ;;
             prove) allowed="$base,Edit,Write,Bash(lake:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git rebase:*),Bash(git merge:*),Bash(git switch:*),Bash(git checkout:*),Bash(git stash:*),Bash(gh pr create:*)" ;;
           esac
           echo "allowed=$allowed" >> "$GITHUB_OUTPUT"
