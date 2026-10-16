@@ -51,6 +51,11 @@ this repository should be read against them; change them here first if the proto
 - **Signatures** (`SignatureChecker`, ERC-1271, Permit2) are an oracle over the exact fields
   each struct hash commits to, until decision 4's hashing model lands.
 - **Events, gas and reverts' reasons** are not modelled; a transaction is `Option World`.
+- **Radix node ids are not exhausted.** Until the fix for the node-id finding below lands,
+  every theorem about `RadixPriceTree` assumes fewer than `2^31` distinct price levels have
+  ever been inserted into a tree (`Bounds.lean` `insert_level_fits`); beyond that, `insert`
+  reverts and the book layer's liveness results no longer apply. The fix decision (roadmap
+  item 7) will replace this assumption with a proof.
 - **The reference commits** are `asyncswap/v2` (working tree as of 2026-10-15) for
   `AsyncSwapSpec` and `AsyncSwap Production/packages/protocol` @ `fcf75d4` for
   `AsyncSwapProtocol`. The formal-mind bot re-pins on every protocol push.
@@ -80,3 +85,6 @@ this repository should be read against them; change them here first if the proto
    sequence and `uint32` radix node-id longevity bounds.
 5. **Radix tree refinement** (decision 4): pointer-level `RadixPriceTree` ≈ functional trie.
 6. **Hashing model** (decision 4): EIP-712 / Permit2 struct hashes and witness binding.
+7. **Node-id exhaustion fix** (finding above): decide the contract fix (recycle freed ids,
+   widen the id, or accept and document), implement it in `RadixPriceTree.sol`, then
+   replace the standing assumption with a theorem that `insert` never reverts on ids.
