@@ -6,6 +6,40 @@ could not be proved, and what the build said. Humans may add entries too; keep t
 
 <!-- formal-mind: insert new entries directly below this line -->
 
+## 2026-10-16 — asyncswap/v2 @ afd161b — (commit title not available to the bot)
+
+**Trigger:** push to `asyncswap/v2` (`repository_dispatch`), commit
+`afd161be167c925ce68ef7a75eadf85097f12fac`.
+
+**Contract change.** `src/libraries/RadixPriceTree.sol` (+23 / −4): `Tree` gains
+`uint32[] freeIds`; a new `_freeNode` deletes a node and pushes its id to `freeIds`; `remove`
+calls `_freeNode` where it used to `delete` (the root leaf in the root case; the branch and
+then the leaf otherwise); `_newNode` pops the last element of `freeIds` before incrementing
+`nextNodeId`. The library doc comment now describes the recycling. This is the same change
+recorded in the 66c2e20 entry below. The commit message could not be read from the sandbox,
+so the heading leaves the title out.
+
+**Spec impact.** None. The spec already models this change exactly, so no Lean file changed.
+Checked against the Solidity at `afd161b`:
+- `AsyncSwapSpec/RadixStorage.lean`: `Tree.freeIds : List ℕ` has the most recent push at the
+  head. `Tree.newNode` pops the head when the list is non-empty and otherwise returns
+  `nextNodeId + 1`. `Tree.freeNode` resets the node to `Node.empty` and conses the id.
+  `Tree.relink` frees `branchId` and then `leafId`, so the leaf ends up on top of the stack, as
+  in Solidity. In the root case `Tree.remove` frees the leaf and sets `root := 0`; the two
+  writes touch different fields, so their order does not matter.
+- `AsyncSwapSpec/Bounds.lean`: the `IdAlloc` counting abstraction (1 id per insert into an
+  empty tree and 2 otherwise, taken from the free list first; 1 released by a root remove and 2
+  otherwise) still matches.
+- `AsyncSwapSpec/RadixTree.lean` (functional trie with no ids) and `AsyncSwapProtocol/*` are
+  unaffected.
+
+**Theorems added.** None. **Theorems changed or weakened.** None. `best_refines`,
+`insert_refines`, `remove_refines` (whose `Repr` invariant includes `ids_fresh`, `free_fresh`
+and `free_nodup`) and the `IdAlloc` bounds were rechecked by the build and still hold.
+**Unproven gaps.** None. **Build.** `lake build` clean (3167 jobs; only the existing
+unreachable-tactic linter warnings in `AsyncSwapProtocol/V2/Invariants.lean`), no `sorry`, no
+`admit`, no new axioms.
+
 ## 2026-10-16 — asyncswap/v2 @ 6cf3ac5 — (commit title not available to the bot)
 
 **Trigger:** push to `asyncswap/v2` (`repository_dispatch`), commit
