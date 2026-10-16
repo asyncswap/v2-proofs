@@ -83,7 +83,13 @@ this repository should be read against them; change them here first if the proto
    reprice re-enters last; the matched level is the best price.
 4. ~~**Bounds**~~ — done (`AsyncSwapSpec/Bounds.lean`): per-site overflow bounds, `uint64`
    sequence and `uint32` radix node-id longevity bounds.
-5. **Radix tree refinement** (decision 4): pointer-level `RadixPriceTree` ≈ functional trie.
+5. ~~**Radix tree refinement**~~ (decision 4) — done (`AsyncSwapSpec/RadixStorage.lean`,
+   `RadixRemove.lean`, `RadixInsert.lean`): the storage model (`nodes` mapping, `parent`
+   pointers, `leaves` map, `_newNode` free list) with `insert`, `remove` and `best` written as
+   `RadixPriceTree.sol` writes them; `Repr` relates storage to the functional trie, and
+   `PriceIndex.best_refines`, `PriceIndex.insert_refines`, `PriceIndex.remove_refines` show
+   each operation stores exactly the verified `PriceIndex` operation (`remove` of an absent
+   price is the `PriceLevelMissing` revert, `insert` reports `created` iff the price was new).
 6. **Hashing model** (decision 4): EIP-712 / Permit2 struct hashes and witness binding.
 7. ~~**Node-id exhaustion fix**~~ — decision: **recycle freed ids** (keeps the one-slot
    `Node`). Implemented in `asyncswap/v2` `RadixPriceTree.sol` (free list popped by

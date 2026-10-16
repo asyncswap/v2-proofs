@@ -21,6 +21,7 @@ lake build           # checks every proof; exit code 0 means all theorems hold
 | `Reduce.lean` | `_reduceAfterMatch`, `_settleMatchedPriorityFee` | Input accounting (`used + remaining = original`); the outstanding minimum only shrinks by what was received; **a maker closed out by any sequence of admissible matches receives at least their original `amountOutMin`** (`maker_limit_honored`), plus a refund of unused input; priority bid donated + remaining = original and the remainder fits `uint64`. |
 | `Book.lean` | `AsyncSwap` / `AsyncFiller` / `AsyncMatching` state transitions | The escrow invariant from `test/MatchingInvariant.t.sol` (`invariant_escrowEqualsOutstandingObligations`) stated as `PoolState.Inv` and proved preserved by `create`, `recordPriorityFee`, `fill`, `cancel`, `updatePrice`, `fillFromPoolLiquidity` and `_matchPair`. Authorisation facts: fill needs an authorised executor, cancel needs owner-or-executor, reprice needs the owner; fill pays maker exactly `amountOutMin`, filler exactly `amountIn`, vault exactly 30 bps of gross; cancel refunds exactly the remaining escrow; filled/cancelled orders cannot be touched again; repricing moves no claims. |
 | `RadixTree.lean` | `RadixPriceTree` (`insert`, `remove`, `best`, `_mostSignificantBit`) | Functional Patricia-trie model following the Solidity loops. **`best` returns the exact maximum / minimum stored price** (`best_true_spec`, `best_false_spec`, `PriceIndex.best_spec` = `invariant_bestPricesAgreeWithLinearScan`); `insert` / `remove` preserve the Patricia invariant and have exact set semantics; the tree only empties when the last leaf is removed; **every traversal visits ≤ 128 branch nodes** for `uint128` prices; the branch-free `_mostSignificantBit` routine equals `⌊log₂⌋` on its whole domain. |
+| `RadixStorage.lean` `RadixRemove.lean` `RadixInsert.lean` | `RadixPriceTree` storage (`struct Tree { root; nextNodeId; freeIds; nodes; leaves }`, `struct Node`, `_newNode`, `_freeNode`, the two `while` loops of `insert`, the pointer surgery of `insert` / `remove`) | **Refinement of the pointer-level contract to the functional trie.** `Reads T id t` says following pointers from `id` reads the inductive trie `t` with consistent parent pointers; `Repr T t` is the representation invariant (reads, no duplicate ids, root parent `0`, `leaves` map exact, ids below `nextNodeId` and not on the free list, free list duplicate-free). `PriceIndex.best_refines`: `best` is the trie's `best`. `PriceIndex.insert_refines`: `insert` reports `created = (price ∉ keys)` and stores exactly `PriceIndex.insert` (first loop lands on `findLeaf`, second loop stops where `insertAt` splits, `link` realises the new branch, both fresh ids are new and the invariant is re-established). `PriceIndex.remove_refines`: `remove` of a present price stores exactly `PriceIndex.remove` (sibling relinked into the grandparent, leaf and branch released to the free list, single-leaf case empties the storage); `PriceIndex.remove_absent`: an absent price is the `PriceLevelMissing` revert. |
 | `Admin.lean` | `transferOwnership`, `acceptOwnership`, `_verify`, `invalidateNonce` | `owner` changes only through `acceptOwnership` by the nominated address; nominating never transfers control; a consumed nonce is never reusable; signatures past `deadline` are rejected. |
 
 ## Modelling choices and what is *not* covered
@@ -35,12 +36,15 @@ lake build           # checks every proof; exit code 0 means all theorems hold
 * **Claims, not balances.** The invariant tracks the hook's ERC-6909 claim balances in the
   PoolManager, exactly as the Foundry invariant does. `invariant_assetsConserved` (PoolManager
   token backing) is a property of Uniswap v4 and is out of scope.
-* **Radix tree: functional model.** `RadixTree.lean` models the trie as an inductive type and
-  proves the algorithm correct. The storage encoding (`nodes` mapping with `uint32` ids,
-  `parent` pointers, the `leaves` map, `_newNode` id allocation) is the remaining refinement
-  gap: the proofs show the *shape* the Solidity loops build is right, not that the pointer
-  updates in `insert` / `remove` realise that shape. `_matchPair` is still specified for an
-  arbitrary (sell, buy) pair; per-price FIFO / priority-bid queues are not modelled.
+* **Radix tree: functional model plus storage refinement.** `RadixTree.lean` models the trie as
+  an inductive type and proves the algorithm correct; `RadixStorage.lean`, `RadixRemove.lean`
+  and `RadixInsert.lean` model the storage encoding (`nodes` mapping with `uint32` ids,
+  `parent` pointers, the `leaves` map, `_newNode` / `_freeNode`) and prove the pointer updates
+  of `insert` / `remove` / `best` realise exactly the functional operations. Loops are written
+  with an explicit fuel; the refinement theorems assume fuel at least the trie's height
+  (≤ 128 for `uint128` prices by `height_le_128`). Ids are unbounded naturals; the `uint32`
+  bound is `Bounds.lean`'s business. `_matchPair` is still specified for an arbitrary (sell,
+  buy) pair; per-price FIFO / priority-bid queues are modelled in `Priority.lean` only.
 * **Atomic transitions.** `_matchPair` burns claims in `_settleTransfers` before
   `_reduceMatchedOrders`; the model folds both into `reduceAfterMatch` per side, since the
   invariant is only required between transactions.
@@ -58,5 +62,6 @@ lean/
    ├─ Fee.lean  Arith.lean  Order.lean
    ├─ Match.lean  Reduce.lean
    ├─ Book.lean  Admin.lean
-   └─ RadixTree.lean
+   ├─ RadixTree.lean
+   └─ RadixStorage.lean  RadixRemove.lean  RadixInsert.lean   # storage refinement
 ```
