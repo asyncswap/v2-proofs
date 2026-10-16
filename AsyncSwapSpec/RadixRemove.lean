@@ -621,7 +621,7 @@ end Remove
 
 /-- Representation of a `PriceIndex`: `none` is the empty storage (`root = 0`, no leaves). -/
 def ReprIx (T : Tree) : PriceIndex → Prop
-  | none => T.root = 0 ∧ (∀ q, T.leaves q = 0) ∧ ∀ id ∈ T.freeIds, id ≤ T.nextNodeId ∧ id ≠ 0
+  | none => T.root = 0 ∧ (∀ q, T.leaves q = 0) ∧ (∀ id ∈ T.freeIds, id ≤ T.nextNodeId ∧ id ≠ 0) ∧ T.freeIds.Nodup
   | some t => Repr T t
 
 theorem Reads.of_nodes_eq {T T' : Tree} (h : T'.nodes = T.nodes) {id : ℕ} {t : Trie} (hr : Reads T id t) :
@@ -687,7 +687,7 @@ theorem remove_root (h : Repr T t) (hp : p ∈ t.keys) (hroot : T.leaves p = T.r
   have ht : t = Trie.leaf p := h.reads.unique (hroot ▸ hleaf)
   have hne : T.leaves p ≠ 0 := hleaf.ne_zero
   have hne' : T.root ≠ 0 := hroot ▸ hne
-  refine ⟨ht, ?_, rfl, ?_, ?_⟩
+  refine ⟨ht, ?_, rfl, ?_, ?_, ?_⟩
   · simp [Tree.remove, hne', hroot]
   · intro q
     simp only [Tree.leaves_freeNode, Tree.leaves_setLeaf]
@@ -701,6 +701,8 @@ theorem remove_root (h : Repr T t) (hp : p ∈ t.keys) (hroot : T.leaves p = T.r
     rcases hid with rfl | hid
     · exact ⟨(h.ids_fresh _ (mem_idsFrom_self _ _ _)).1, h.reads.ne_zero⟩
     · exact h.free_fresh id hid
+  · simp only [Tree.freeIds_freeNode, Tree.freeIds_setLeaf]
+    exact List.nodup_cons.2 ⟨(h.ids_fresh _ (mem_idsFrom_self _ _ _)).2, h.free_nodup⟩
 
 /-- **Removal refinement.** Removing a present key that is not the only key: the contract's
     relinking of the sibling into the grandparent stores exactly `Trie.remove`. -/
@@ -855,7 +857,7 @@ theorem remove_refines (h : Repr T t) (hw : Trie.Wf t) (hp : p ∈ t.keys) (hroo
   clear_value T5
   refine
     { reads := ?_, nodup := ?_, root_parent := ?_, leaves_mem := ?_, leaves_absent := ?_,
-      ids_fresh := ?_, free_fresh := ?_ }
+      ids_fresh := ?_, free_fresh := ?_, free_nodup := ?_ }
   · rw [h5r, hroot_eq]; exact hreads.of_nodes_eq h5n
   · rw [h5r, hroot_eq, idsFrom_of_nodes_eq h5n]; exact hnd'
   · rw [h5r, h5n, hroot_eq]; exact hroot_parent
@@ -893,6 +895,10 @@ theorem remove_refines (h : Repr T t) (hw : Trie.Wf t) (hp : p ∈ t.keys) (hroo
     · exact ⟨(h.ids_fresh _ hmem).1, hlne⟩
     · exact ⟨(h.ids_fresh _ hbr_mem).1, hbne⟩
     · exact h.free_fresh id hid
+  · rw [h5f, hfree]
+    refine List.nodup_cons.2 ⟨?_, List.nodup_cons.2 ⟨(h.ids_fresh _ hbr_mem).2, h.free_nodup⟩⟩
+    simp only [List.mem_cons, not_or]
+    exact ⟨hleaf_ne_br, (h.ids_fresh _ hmem).2⟩
 
 /-- **`PriceIndex.remove` refinement.** On every represented index and present price, the
     contract's `remove` succeeds and stores exactly the verified `PriceIndex.remove`. -/
