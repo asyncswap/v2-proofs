@@ -1,0 +1,286 @@
+name: formalmind swarm
+
+# A small team of bots that take the roadmap in README.md and keep working on it, hands off,
+# within a spend budget. GitHub is their shared memory: issues are the task queue, `fm:*`
+# labels are the state machine, pull requests are the deliverables, and issue #38 (the
+# ledger) is the spend log and the planner's digest channel. See .github/formalmind/README.md.
+#
+# Every 30 minutes (or as soon as an `fm:` label changes) the dispatcher picks at most one
+# model job, in this order: merge an approved PR, review a PR, revise a PR the reviewer
+# bounced, resume or start an issue, or plan when the queue is empty. Nothing runs when the
+# day's or month's budget is spent.
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      role:
+        description: "force a role (plan | prove | review | merge); blank lets the dispatcher decide"
+        required: false
+        default: ""
+      number:
+        description: "issue number (prove) or PR number (prove, review, merge)"
+        required: false
+        default: ""
+  issues:
+    types: [labeled]
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+
+# One sweep at a time; later triggers queue behind the running one.
+concurrency:
+  group: formalmind-swarm
+  cancel-in-progress: false
+
+env:
+  LEDGER_ISSUE: "38"
+  DAILY_USD: "2.00"
+  MONTHLY_USD: "50.00"
+  CAP_PLAN: "0.40"
+  CAP_REVIEW: "0.40"
+  CAP_MERGE: "0.40"
+  CAP_PROVE: "1.20"
+
+jobs:
+  dispatch:
+    if: ${{ (github.event_name != 'issues' && github.event_name != 'pull_request') || startsWith(github.event.label.name, 'fm:') }}
+    runs-on: ubuntu-latest
+    env:
+      FORMALMIND_APP_ID: ${{ secrets.FORMALMIND_APP_ID }}
+    outputs:
+      role: ${{ steps.pick.outputs.role }}
+      number: ${{ steps.pick.outputs.number }}
+      kind: ${{ steps.pick.outputs.kind }}
+      cap: ${{ steps.pick.outputs.cap }}
+      rounds: ${{ steps.pick.outputs.rounds }}
+      remaining: ${{ steps.pick.outputs.remaining }}
+    steps:
+      - name: formalmind App token
+        id: app
+        if: ${{ env.FORMALMIND_APP_ID != '' }}
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.FORMALMIND_APP_ID }}
+          private-key: ${{ secrets.FORMALMIND_APP_PRIVATE_KEY }}
+      - name: Budget, then pick one job
+        id: pick
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          FORCE_ROLE: ${{ inputs.role }}
+          FORCE_NUMBER: ${{ inputs.number }}
+        run: |
+          R="$GITHUB_REPOSITORY"
+          today=$(date -u +%F); month=$(date -u +%Y-%m)
+          gh api --paginate "repos/$R/issues/$LEDGER_ISSUE/comments?since=${month}-01T00:00:00Z&per_page=100" \
+            --jq '.[] | "\(.created_at) \(.body | gsub("\n"; " "))"' > ledger.txt || true
+          sum() { grep -o 'usd=[0-9.]*' | awk -F= '{ s += $2 } END { printf "%.2f", s }'; }
+          spent_month=$(sum < ledger.txt)
+          spent_today=$(grep "^$today" ledger.txt | sum)
+          remaining=$(awk -v d="$DAILY_USD" -v m="$MONTHLY_USD" -v t="$spent_today" -v mo="$spent_month" \
+            'BEGIN { a = d - t; b = m - mo; printf "%.2f", (a < b ? a : b) }')
+          echo "spent today \$$spent_today, this month \$$spent_month, remaining \$$remaining"
+          affordable() { awk -v c="$1" -v r="$remaining" 'BEGIN { exit !(c <= r) }'; }
+          oldest_pr() { gh pr list -R "$R" --state open --label "$1" --json number,createdAt --jq 'sort_by(.createdAt) | .[0].number // empty'; }
+          oldest_issue() { gh issue list -R "$R" --state open --label "$1" --json number,createdAt --jq 'sort_by(.createdAt) | .[0].number // empty'; }
+
+          role=""; number=""; kind=""; cap=0
+          if [ -n "$FORCE_ROLE" ]; then
+            role="$FORCE_ROLE"; number="$FORCE_NUMBER"
+            case "$role" in
+              plan) cap=$CAP_PLAN; kind=none ;;
+              review) cap=$CAP_REVIEW; kind=pr ;;
+              merge) cap=$CAP_MERGE; kind=pr ;;
+              prove) cap=$CAP_PROVE
+                if gh pr view -R "$R" "$number" --json number >/dev/null 2>&1; then kind=pr; else kind=issue; fi ;;
+              *) echo "::error::unknown role $role"; exit 1 ;;
+            esac
+          else
+            # 1. merge: a PR the reviewer approved
+            n=$(oldest_pr fm:approved); [ -n "$n" ] && { role=merge; number=$n; kind=pr; cap=$CAP_MERGE; }
+            # 2. review: a PR waiting for the reviewer
+            [ -z "$role" ] && { n=$(oldest_pr fm:review); [ -n "$n" ] && { role=review; number=$n; kind=pr; cap=$CAP_REVIEW; }; }
+            # 3. revise: a PR the reviewer or merger bounced, or one that conflicts with dev
+            [ -z "$role" ] && { n=$(oldest_pr fm:changes); [ -z "$n" ] && n=$(oldest_pr fm:needs-rebase); [ -n "$n" ] && { role=prove; number=$n; kind=pr; cap=$CAP_PROVE; }; }
+            # 4. resume: an in-progress issue whose branch has no open PR (a prover run was cut off)
+            if [ -z "$role" ]; then
+              for i in $(gh issue list -R "$R" --state open --label fm:in-progress --json number,createdAt --jq 'sort_by(.createdAt) | .[].number'); do
+                if [ -z "$(gh pr list -R "$R" --state open --head "fm/issue-$i" --json number --jq '.[0].number // empty')" ]; then
+                  tries=$(grep "^$today" ledger.txt | grep -c "role=prove ref=#$i " || true)
+                  if [ "$tries" -ge 2 ]; then
+                    gh issue edit -R "$R" "$i" --remove-label fm:in-progress --add-label fm:blocked
+                    gh issue comment -R "$R" "$i" --body "**dispatcher** two prover runs today ended without a pull request, so I'm parking this one. @mmsaki, have a look when you can; the branch \`fm/issue-$i\` has whatever was pushed."
+                    continue
+                  fi
+                  role=prove; number=$i; kind=issue; cap=$CAP_PROVE; break
+                fi
+              done
+            fi
+            # 5. new work
+            [ -z "$role" ] && { n=$(oldest_issue fm:todo); [ -n "$n" ] && { role=prove; number=$n; kind=issue; cap=$CAP_PROVE; }; }
+            # 6. plan when the queue is empty, unless the last plan said idle less than a day ago
+            if [ -z "$role" ]; then
+              last=$(grep -o 'fm-plan [a-z]* [0-9TZ:-]*' ledger.txt | tail -1)
+              state=$(echo "$last" | awk '{ print $2 }'); when=$(echo "$last" | awk '{ print $3 }')
+              age=$(( $(date -u +%s) - $(date -u -d "${when:-1970-01-01T00:00:00Z}" +%s) ))
+              if [ "$state" = idle ] && [ "$age" -lt 86400 ]; then
+                echo "planner said idle ${age}s ago; nothing to do"
+              else
+                role=plan; kind=none; cap=$CAP_PLAN
+              fi
+            fi
+          fi
+
+          if [ -n "$role" ] && ! affordable "$cap"; then
+            echo "budget: $role needs \$$cap but only \$$remaining is left"
+            grep -q "^$today.*fm-paused" ledger.txt || gh issue comment -R "$R" "$LEDGER_ISSUE" --body "<!-- fm-paused --> **dispatcher** paused: \$$spent_today spent today and \$$spent_month this month, the next job needs \$$cap. Back when the budget resets."
+            role=""
+          fi
+          rounds=0
+          [ -n "$number" ] && rounds=$(grep -c "ref=#$number " ledger.txt || true)
+          if [ "$role" = prove ] && [ "$kind" = issue ]; then
+            gh issue edit -R "$R" "$number" --remove-label fm:todo --add-label fm:in-progress 2>/dev/null || true
+          fi
+          echo "picked: ${role:-nothing} ${kind:-} ${number:-} (cap \$$cap, rounds $rounds)"
+          {
+            echo "role=$role"; echo "number=$number"; echo "kind=$kind"; echo "cap=$cap"
+            echo "rounds=$rounds"; echo "remaining=$remaining"
+          } >> "$GITHUB_OUTPUT"
+
+  agent:
+    needs: dispatch
+    if: ${{ needs.dispatch.outputs.role != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      FORMALMIND_APP_ID: ${{ secrets.FORMALMIND_APP_ID }}
+      ROLE: ${{ needs.dispatch.outputs.role }}
+      NUMBER: ${{ needs.dispatch.outputs.number }}
+      KIND: ${{ needs.dispatch.outputs.kind }}
+      CAP: ${{ needs.dispatch.outputs.cap }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: formalmind App token
+        id: app
+        if: ${{ env.FORMALMIND_APP_ID != '' }}
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.FORMALMIND_APP_ID }}
+          private-key: ${{ secrets.FORMALMIND_APP_PRIVATE_KEY }}
+      - name: Check out the branch for this job
+        id: ctx
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+        run: |
+          git config user.name "formalmind[bot]"
+          git config user.email "213248595+formalmind[bot]@users.noreply.github.com"
+          if [ "$KIND" = pr ]; then
+            gh pr checkout "$NUMBER"
+          elif [ "$KIND" = issue ]; then
+            if git ls-remote --exit-code --heads origin "fm/issue-$NUMBER" >/dev/null; then
+              git fetch origin "fm/issue-$NUMBER" && git switch "fm/issue-$NUMBER"
+            else
+              git switch -c "fm/issue-$NUMBER"
+            fi
+          fi
+          {
+            echo "branch=$(git branch --show-current)"
+            echo "sha=$(git rev-parse HEAD)"
+          } >> "$GITHUB_OUTPUT"
+      - name: Install elan
+        if: ${{ env.ROLE == 'prove' || env.ROLE == 'merge' }}
+        run: |
+          curl -sSfL https://elan.lean-lang.org/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - uses: actions/cache@v4
+        if: ${{ env.ROLE == 'prove' || env.ROLE == 'merge' }}
+        with:
+          path: |
+            .lake
+            ~/.cache/mathlib
+          key: lake-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}
+          restore-keys: lake-${{ runner.os }}-
+      - run: lake exe cache get
+        if: ${{ env.ROLE == 'prove' || env.ROLE == 'merge' }}
+      - name: Gate on a clean build before the merger looks
+        id: gate
+        if: ${{ env.ROLE == 'merge' }}
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+        run: |
+          if lake build 2>&1 | tee build.log && ! grep -rn --include='*.lean' -E '\bsorry\b' AsyncSwapSpec AsyncSwapProtocol; then
+            echo "clean=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "clean=false" >> "$GITHUB_OUTPUT"
+            gh pr edit "$NUMBER" --remove-label fm:approved --add-label fm:changes
+            { echo "**merger** the build is not clean on $(git rev-parse --short HEAD), so this goes back to @fm-prover. Tail of \`lake build\`:"; echo; echo '```text'; tail -40 build.log; echo '```'; } > bounce.md
+            gh pr comment "$NUMBER" --body-file bounce.md
+          fi
+      - name: Tools for this role
+        id: tools
+        run: |
+          base="Read,Glob,Grep,Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(git status:*),Bash(git rev-parse:*),Bash(git branch:*),Bash(git fetch:*),Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh issue edit:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr edit:*),Bash(gh api repos/$GITHUB_REPOSITORY:*)"
+          case "$ROLE" in
+            plan) allowed="$base,Bash(gh issue create:*)" ;;
+            review) allowed="$base,mcp__github_inline_comment__create_inline_comment" ;;
+            merge) allowed="$base,mcp__github_inline_comment__create_inline_comment,Bash(gh pr merge:*),Bash(lake:*),Write" ;;
+            prove) allowed="$base,Edit,Write,Bash(lake:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git rebase:*),Bash(git merge:*),Bash(git switch:*),Bash(git checkout:*),Bash(git stash:*),Bash(gh pr create:*)" ;;
+          esac
+          echo "allowed=$allowed" >> "$GITHUB_OUTPUT"
+      - uses: anthropics/claude-code-action@v1
+        id: bot
+        if: ${{ env.ROLE != 'merge' || steps.gate.outputs.clean == 'true' }}
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ steps.app.outputs.token || github.token }}
+          bot_name: "formalmind[bot]"
+          bot_id: "213248595"
+          allowed_bots: "formalmind[bot],formalmind"
+          include_fix_links: "false"
+          prompt: |
+            You are the ${{ env.ROLE }} of the formalmind swarm. Read .github/formalmind/README.md,
+            then .github/formalmind/${{ env.ROLE }}.md, and follow them.
+
+            ROLE=${{ env.ROLE }}
+            REPO=${{ github.repository }}
+            KIND=${{ env.KIND }}
+            NUMBER=${{ env.NUMBER }}
+            BRANCH=${{ steps.ctx.outputs.branch }}
+            SHA=${{ steps.ctx.outputs.sha }}
+            ROUNDS=${{ needs.dispatch.outputs.rounds }}
+            BUDGET_USD=${{ env.CAP }}
+            LEDGER_ISSUE=${{ env.LEDGER_ISSUE }}
+            RUN_URL=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          claude_args: >-
+            --allowedTools "${{ steps.tools.outputs.allowed }}"
+            --max-turns 60
+            --max-budget-usd ${{ env.CAP }}
+      - name: Record the cost on the ledger
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          EXECUTION_FILE: ${{ steps.bot.outputs.execution_file }}
+          OUTCOME: ${{ steps.bot.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          usd=""
+          if [ -n "$EXECUTION_FILE" ] && [ -f "$EXECUTION_FILE" ]; then
+            usd=$(jq -r '[.[] | select(.type == "result")] | last | .total_cost_usd // empty' "$EXECUTION_FILE" 2>/dev/null || true)
+          fi
+          # No cost file means the run was cut off: count the whole cap, so the budget stays honest.
+          [ -z "$usd" ] && [ "$OUTCOME" != skipped ] && usd="$CAP"
+          [ -z "$usd" ] && usd=0
+          usd=$(printf '%.2f' "$usd")
+          ref=""; [ -n "$NUMBER" ] && ref="#$NUMBER"
+          printf '<!-- fm-cost role=%s ref=%s usd=%s run=%s -->\n**%s** %s— $%s, %s ([run](%s))\n' \
+            "$ROLE" "$ref" "$usd" "$GITHUB_RUN_ID" "$ROLE" "${ref:+$ref }" "$usd" "$OUTCOME" "$RUN_URL" > ledger.md
+          gh issue comment "$LEDGER_ISSUE" --body-file ledger.md
