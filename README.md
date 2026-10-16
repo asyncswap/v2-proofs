@@ -5,7 +5,7 @@ Lean 4 + Mathlib specification and machine-checked proofs for the Async Swap pro
 | Library | Scope | Reference source |
 | --- | --- | --- |
 | `AsyncSwapSpec` | v2 hook: protocol fee, order matching, partial fills, escrow invariant, admin, `RadixPriceTree` | `asyncswap/v2` `src/` |
-| `AsyncSwapProtocol` | Call-sequence state machine from the README sequence diagram: Router → PoolManager → hook → FeeVault, token ledgers, claims, deltas | `AsyncSwap Production/packages/protocol/src` @ `fcf75d4` |
+| `AsyncSwapProtocol` | Call-sequence state machine from the README sequence diagram: Router → PoolManager → hook → FeeVault, token ledgers, claims, deltas. `AsyncSwapProtocol/V2/` extends it to v2 (priority bids, matching, liquidity fills, NativeClaims) with lifecycle, settlement, delta neutrality, backing, escrow and conservation theorems | v1: `AsyncSwap Production/packages/protocol/src` @ `fcf75d4`; v2: `asyncswap/v2` `src/` |
 
 `lake build` checks every theorem. No `sorry`, no extra axioms. See [README.spec.md](README.spec.md)
 for the theorem-by-theorem map of `AsyncSwapSpec`, and the module docstrings in
@@ -57,12 +57,11 @@ this repository should be read against them; change them here first if the proto
 
 ## Roadmap
 
-1. **v2 state machine** (`AsyncSwapProtocol`): priority-bid escrow in the create unlock,
-   `matchNewOrder` after settlement, `matchBook`, `fillFromPoolLiquidity`, `NativeClaims`
-   redemption; re-prove lifecycle, settlement, delta neutrality.
-2. **Global invariants** for the state machine: per-currency conservation over all ledgers,
-   `claims ≤ PoolManager balance` (all claims backed), hook claims = open escrow, non-negative
-   balances.
+1. ~~**v2 state machine**~~ — done (`AsyncSwapProtocol/V2/Model.lean`, `Spec.lean`,
+   `Settlement.lean`).
+2. ~~**Global invariants**~~ — done: `Backing` (PoolManager balance = claim supply + pool
+   reserves), `Escrow` (hook claims = open input + escrowed bids), `step_conservation`
+   (per-currency totals over all ledgers). Non-negativity of balances remains open.
 3. **Price-time priority** (decision 1): `bestAtPrice` returns the highest bid then lowest
    sequence; a reprice loses time priority; `matchIncoming` / `matchBook` only match the
    best bid against the best ask.
