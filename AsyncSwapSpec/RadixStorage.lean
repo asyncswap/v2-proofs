@@ -76,6 +76,20 @@ def descendUntil (T : Tree) (price split : ℕ) : ℕ → ℕ → ℕ → ℕ ×
           (if price.testBit (T.nodes cursor).bit then (T.nodes cursor).right else (T.nodes cursor).left)
       else (parent, cursor)
 
+/-- The pointer surgery at the end of `insert`: a fresh branch `branchId` at `split` takes
+    `cursor2` and the new leaf `leafId` as children (ordered by the price's bit at `split`), and
+    replaces `cursor2` in its parent `parentId`, or in the root slot when `parentId = 0`. -/
+def link (T : Tree) (price split leafId branchId parentId cursor2 : ℕ) : Tree :=
+  let branch : Node :=
+    if price.testBit split then { Node.empty with parent := parentId, bit := split, left := cursor2, right := leafId }
+    else { Node.empty with parent := parentId, bit := split, left := leafId, right := cursor2 }
+  let T4 := T.setNode branchId branch
+  let T5 := T4.setNode cursor2 { T4.nodes cursor2 with parent := branchId }
+  let T6 := T5.setNode leafId { T5.nodes leafId with parent := branchId }
+  if parentId = 0 then { T6 with root := branchId }
+  else if (T6.nodes parentId).left = cursor2 then T6.setNode parentId { T6.nodes parentId with left := branchId }
+  else T6.setNode parentId { T6.nodes parentId with right := branchId }
+
 /-- `insert(self, price)` returning `(tree, created)`. -/
 def insert (T : Tree) (price : ℕ) (fuel : ℕ) : Tree × Bool :=
   if T.leaves price ≠ 0 then (T, false) else
@@ -86,17 +100,7 @@ def insert (T : Tree) (price : ℕ) (fuel : ℕ) : Tree × Bool :=
   let split := Nat.log2 (price ^^^ (T2.nodes cursor).price)
   let (parentId, cursor2) := descendUntil T2 price split fuel 0 T2.root
   let (T3, branchId) := T2.newNode
-  let branch : Node :=
-    if price.testBit split then { Node.empty with parent := parentId, bit := split, left := cursor2, right := leafId }
-    else { Node.empty with parent := parentId, bit := split, left := leafId, right := cursor2 }
-  let T4 := T3.setNode branchId branch
-  let T5 := T4.setNode cursor2 { T4.nodes cursor2 with parent := branchId }
-  let T6 := T5.setNode leafId { T5.nodes leafId with parent := branchId }
-  let T7 :=
-    if parentId = 0 then { T6 with root := branchId }
-    else if (T6.nodes parentId).left = cursor2 then T6.setNode parentId { T6.nodes parentId with left := branchId }
-    else T6.setNode parentId { T6.nodes parentId with right := branchId }
-  (T7, true)
+  (T3.link price split leafId branchId parentId cursor2, true)
 
 /-- The pointer surgery of `remove` for a non-root leaf: the grandparent (or the root slot)
     now points at the sibling, the sibling's parent becomes the grandparent, and the branch and
@@ -148,6 +152,7 @@ structure Repr (T : Tree) (t : Trie) : Prop where
   leaves_absent : ∀ p, p ∉ t.keys → T.leaves p = 0
   ids_fresh : ∀ id ∈ idsFrom T T.root t, id ≤ T.nextNodeId ∧ id ∉ T.freeIds
   free_fresh : ∀ id ∈ T.freeIds, id ≤ T.nextNodeId ∧ id ≠ 0
+  free_nodup : T.freeIds.Nodup
 
 /-- Empty storage tree represents "no trie" (`root = 0`). -/
 def Tree.empty : Tree := ⟨0, 0, [], fun _ => Node.empty, fun _ => 0⟩
