@@ -264,7 +264,7 @@ contract Router is IUnlockCallback, EIP712 {
         }
 
         if (o.priorityFee != 0) {
-            Currency numeraire = o.key.currency1;
+            Currency numeraire = hook.numeraire();
             manager.sync(numeraire);
             IERC20Minimal(Currency.unwrap(numeraire)).transferFrom(o.owner, address(manager), o.priorityFee);
             manager.settleFor(address(hook));

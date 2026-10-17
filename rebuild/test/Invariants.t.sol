@@ -160,7 +160,9 @@ contract InvariantTest is BaseTest {
             if (info.amountIn == 0) continue;
             open++;
             assertGt(info.amountOutMin, 0);
-            assertEq(info.priceKey, AsyncFiller.priceKey(!info.zeroForOne, info.amountIn, info.amountOutMin));
+            Currency input = info.zeroForOne ? k.currency0 : k.currency1;
+            assertEq(info.buy, input == usdc, "a buy spends the numeraire");
+            assertEq(info.priceKey, AsyncFiller.priceKey(info.buy, info.amountIn, info.amountOutMin));
         }
         assertEq(open, hook.openOrders(k));
     }
@@ -180,7 +182,7 @@ contract InvariantTest is BaseTest {
         bool any;
         for (uint256 i = 0; i < ids.length; i++) {
             AsyncFiller.OrderInfo memory info = hook.getOrder(k, ids[i]);
-            if (info.amountIn == 0 || AsyncFiller.isBuy(info.zeroForOne) != buySide) continue;
+            if (info.amountIn == 0 || info.buy != buySide) continue;
             any = true;
             if (buySide ? info.priceKey > scan : info.priceKey < scan) scan = info.priceKey;
         }
@@ -194,7 +196,7 @@ contract InvariantTest is BaseTest {
         for (uint256 i = 0; i < ids.length; i++) {
             if (ids[i] == bestId) continue;
             AsyncFiller.OrderInfo memory info = hook.getOrder(k, ids[i]);
-            if (info.amountIn == 0 || AsyncFiller.isBuy(info.zeroForOne) != buySide || info.priceKey != scan) continue;
+            if (info.amountIn == 0 || info.buy != buySide || info.priceKey != scan) continue;
             bool ranksBefore = best.priorityFee > info.priorityFee
                 || (best.priorityFee == info.priorityFee && best.sequence < info.sequence);
             assertTrue(ranksBefore, "bid first, then FIFO");
@@ -210,6 +212,7 @@ contract InvariantTest is BaseTest {
     function invariant_hookHoldsNoTokens() public view {
         assertEq(_bal(currency0, address(hook)), 0);
         assertEq(_bal(currency1, address(hook)), 0);
+        assertEq(_bal(other, address(hook)), 0);
         assertEq(address(hook).balance, 0);
     }
 
@@ -220,12 +223,31 @@ contract InvariantTest is BaseTest {
         assertGe(_bal(currency0, address(manager)), claims);
         claims = _claims(currency1, address(hook)) + _claims(currency1, address(vault));
         assertGe(_bal(currency1, address(manager)), claims);
+        claims = _claims(other, address(hook)) + _claims(other, address(vault));
+        assertGe(_bal(other, address(manager)), claims);
     }
 }
 
 contract InvariantPriorityTest is InvariantTest {
     function _handlerKey() internal view override returns (PoolKey memory) {
         return prioKey;
+    }
+
+    function _priority() internal pure override returns (bool) {
+        return true;
+    }
+}
+
+/// @dev The numeraire as currency0: a buy is `zeroForOne`, bids are paid and donated in currency0.
+contract InvariantFlipTest is InvariantTest {
+    function _handlerKey() internal view override returns (PoolKey memory) {
+        return flipKey;
+    }
+}
+
+contract InvariantFlipPriorityTest is InvariantTest {
+    function _handlerKey() internal view override returns (PoolKey memory) {
+        return flipPrioKey;
     }
 
     function _priority() internal pure override returns (bool) {

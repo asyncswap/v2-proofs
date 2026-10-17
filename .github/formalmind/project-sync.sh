@@ -39,9 +39,9 @@ status_of() { # $1 = issue JSON from the REST API
 		| if .state == "closed" then "Done"
 		  elif ($l | index("fm:blocked")) then "Blocked"
 		  elif ($l | index("fm:approved")) then "Approved"
-		  elif ($l | index("fm:in-progress")) or ($l | index("fm:rebuilding")) or ($l | index("fm:changes")) or ($l | index("fm:needs-rebase")) then "In progress"
+		  elif ($l | index("fm:in-progress")) or ($l | index("fm:rebuilding")) or ($l | index("fm:consolidating")) or ($l | index("fm:changes")) or ($l | index("fm:needs-rebase")) then "In progress"
 		  elif .pull_request then "In review"
-		  elif ($l | index("fm:todo")) or ($l | index("fm:rebuild")) or ($l | index("fm:finding")) or ($l | index("fm:intent")) then "Todo"
+		  elif ($l | index("fm:todo")) or ($l | index("fm:rebuild")) or ($l | index("fm:finding")) or ($l | index("fm:intent")) or ($l | index("fm:consolidate")) then "Todo"
 		  else "" end' <<<"$1"
 }
 

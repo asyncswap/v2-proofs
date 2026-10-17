@@ -28,6 +28,7 @@ role (or human) can stop to ask another role a question with `/ask <role>`. Only
 | `fm:rebuild` | a scoped unit of rebuild work under `rebuild/`, queued for the rebuilder |
 | `fm:rebuilding` | the rebuilder is on it; its branch is `fm/rebuild-<n>` |
 | `fm:finding` | a spec gap (from the editor or the rebuilder); the planner turns it into `fm:todo` |
+| `fm:consolidate` / `fm:consolidating` | decisions to carry into `official/`, queued / in progress |
 | `fm:intent` | behaviour the maintainer described in words but has not built; specified first |
 | `fm:ask-<role>` | someone asked that role a question here; it answers on its next turn |
 | Issue #38 "formalmind ledger" | one comment per run with its cost; the planner's digests; pause notes |
@@ -35,6 +36,7 @@ role (or human) can stop to ask another role a question with `/ask <role>`. Only
 | Issue #53 "Chief updates" | the chief's daily audit (the record, not tagged) |
 | Issue #69 "Assistant" | the maintainer's thread: questions to them, their answers, the evening update |
 | `rebuild/` | the Solidity rebuild of v2, built from the proofs only (Foundry); see `rebuild/README.md` |
+| `official/` | the consolidated protocol: v2's code and tests plus the decisions; docs in `official/docs/` |
 | `RebuildSpec/` | **S′**, the spec proved from the rebuild (cycle phase reprove) |
 | Ledger markers `fm-cycle`, `fm-edit` | the cycle's number and phase, and the commit the editor last compared |
 
@@ -76,6 +78,11 @@ role (or human) can stop to ask another role a question with `/ask <role>`. Only
   When the maintainer replies on #69 it carries the answer out: unblocks, labels,
   `fm:human-ok`, new issues, and new behaviour described in words as `fm:intent`. It never merges, pushes or edits files. At 23:50 UTC it turns
   the chief's audit into a short evening update.
+- **consolidator** owns `official/`, the one protocol everyone builds against: the draft's code
+  and interface plus every recorded decision and accepted improvement. Each run it writes, in
+  order, the state machine, then the Mermaid diagrams drawn from it, then the docs written from
+  both, and only then changes the code, so it always knows the whole protocol. Works
+  `fm:consolidate` issues on `fm/consolidate-<n>` branches.
 - **the human** is asked only through the assistant, when a decision is needed. `fm:human-ok` on a PR tells the
   merger the maintainer has looked and it may merge as is.
 - **dispatcher** is not a model. Every 30 minutes, or as soon as an `fm:` label changes, it

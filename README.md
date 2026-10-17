@@ -36,6 +36,10 @@ this repository should be read against them; change them here first if the proto
 | 5 | Fix for radix node-id exhaustion (2026-10-16) | **Recycle freed ids**, keep `uint32`. Rejected: widen to `uint64` (two-slot `Node`), accept-and-document. | `remove` releases ids to a free list; the spec's exhaustion assumption becomes a theorem about the peak number of live levels. |
 | 6 | How to model `keccak256` for EIP-712 / Permit2 (2026-10-16) | **Symbolic preimages + collision-freedom.** `keccak256` is an arbitrary injective function on the preimages the contracts build (type strings, `abi.encode` word tuples, the EIP-712 envelope). Rejected: concrete Keccak (no proof leverage), identity "hash" (unfaithful). | Binding theorems are exact: a signature commits to precisely the listed fields, and `sqrtPrice` / `salt` are provably *not* covered by the Permit2 witness (by design: v4 never reads the limit, the hook assigns the salt). |
 | 4 | Periphery in verified scope | **All of:** radix-tree storage refinement; native-ETH transient ledger (incl. v2 `NativeClaims`); EIP-712 / Permit2 struct hashing and witness binding; `FeeVault.collect` and `sweep`. | Signature validity moves from an abstract oracle to a hashing model; the pointer-level `RadixPriceTree` gets a refinement proof against `AsyncSwapSpec/RadixTree.lean`. |
+| 7 | Partially filled orders whose price changes (2026-10-17, cycle 1) | **Follow v2:** a partial fill that changes an order's price key gives it a new sequence, so it goes to the back of its new level, like a reprice. | The rebuild re-sequences on partial fills; the priority theorems should cover the reduced order too. |
+| 8 | Compatibility with deployed v2 (2026-10-17, cycle 1) | **Stay compatible with v2:** EIP-712 domains `"AsyncSwap","1"` and `"AsyncSwap Router","1"`, the `HookSwap` event, and v2's external interface, so v2's own test suite runs against the rebuild. | The official rebuild keeps v2's ABI; its internals may stay simpler. |
+| 9 | Improvements found by the rebuild (2026-10-17, cycle 1) | **Accept all:** the priority bid is escrowed in the same unlock that creates the order (no separate `recordPriorityFee` step or escrowed flag); the maker chooses the salt (the id is known before sending; the hook walks `salt = keccak256(salt)` past a used id and reports the final salt); every test is named after the theorem it checks. | Carried into the official rebuild, and candidates to carry back into v2. |
+| 10 | Gaps found by the rebuild (2026-10-17, cycle 1) | **Follow v2:** USDC on either side of a pool, pools must hold USDC and use a dynamic fee, pool fills charge a fixed 0.30% LP fee, and a new order falls back to pool liquidity after matching. | Findings for the spec: the model fixes the numeraire to `currency1` and does not model the fallback or the fee override. |
 
 ### Standing modelling assumptions
 
@@ -67,6 +71,13 @@ this repository should be read against them; change them here first if the proto
 
 ## Findings worth a contract-side look
 
+- **A FIFO reprice corrupts the price-level lists** (found 2026-10-17 by the rebuild's invariant tests
+  run against v2, fixed in `official/`): `AsyncFiller._append` set `order.previous` but never cleared
+  `order.next`, so an order re-appended by `updatePrice` (or by a partial fill that moved its price)
+  kept a pointer into its old level. Its next removal rewired the wrong level: `bestOrder` could name a
+  cancelled order, a crossed book could not be matched, and a new order at that price reverted with a
+  division by zero. Escrow was never at risk; PriorityFee pools were not affected. The fix is one line
+  (`order.next = bytes32(0)` in `_append`); `asyncswap/v2` still has the bug.
 - **Radix node ids were never reused** (found 2026-10-15, fixed 2026-10-16 by recycling):
   each new distinct price level cost two fresh `uint32` ids and `remove` freed none, so after
   `2^31 − 1` distinct levels a tree's `insert` would revert with `NodeIdOverflow` forever.

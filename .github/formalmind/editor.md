@@ -46,7 +46,10 @@ first, cross tasks out as you go, close it with **Verified** and **Left**.
      (`fm:todo`, "spec: S′ — model the rebuild under RebuildSpec/") once. Later runs compare
      **S** and **S′** theorem by theorem and file what is missing on either side. When they
      agree, `close`.
-   - `close`: post the cycle summary (below), then decide: next cycle (restart at `spec`
+   - `close`: if the cycle recorded decisions that `official/` does not reflect yet, file one
+     `fm:consolidate` issue "official: cycle <k> decisions" listing them (decision numbers), so the
+     consolidator carries them into the official protocol and its state machine, diagrams and docs.
+     Then post the cycle summary (below), then decide: next cycle (restart at `spec`
      when anything changed **S**), or rest at the end state.
 3. **One comparison issue per cycle.** Keep the cycle's differences in a single issue
    "cycle <k>: draft vs rebuild", one checklist line per difference with its class, link and

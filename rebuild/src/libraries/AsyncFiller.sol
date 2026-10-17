@@ -31,9 +31,13 @@ library AsyncFiller {
 
     /// @dev `amountIn == 0` means "no such order". The bid is always escrowed (the hook mints its claim in the
     ///      same `beforeSwap` that creates the order), so the model's `priorityFeeEscrowed` flag is constant.
+    /// @dev `buy` is fixed at creation: the order spends the pool's numeraire (`input == numeraire`). The Lean
+    ///      model takes currency1 as the numeraire, so there `buy = !zeroForOne`; the hook accepts the
+    ///      numeraire on either side and records the side instead of deriving it.
     struct OrderInfo {
         address owner;
         bool zeroForOne;
+        bool buy;
         uint64 priorityFee;
         uint64 sequence;
         uint128 priceKey;
@@ -78,11 +82,6 @@ library AsyncFiller {
     error NotOrderOwner(bytes32 id);
     error BookNotEmpty();
 
-    /// @dev A *buy* spends the numeraire (currency1) for currency0, i.e. `zeroForOne == false`.
-    function isBuy(bool zeroForOne) internal pure returns (bool) {
-        return !zeroForOne;
-    }
-
     /* ─────────────────────────────── transitions ─────────────────────────────── */
 
     /// @dev `Book.create` guards and storage effect (the claim mint is the hook's).
@@ -91,6 +90,7 @@ library AsyncFiller {
         bytes32 id,
         address owner,
         bool zeroForOne,
+        bool buy,
         uint256 amountIn,
         uint256 amountOutMin,
         uint256 priorityFee
@@ -111,11 +111,12 @@ library AsyncFiller {
         sequence = ++book.nextSequence;
         info.owner = owner;
         info.zeroForOne = zeroForOne;
+        info.buy = buy;
         info.amountIn = amountIn;
         info.amountOutMin = amountOutMin;
         info.priorityFee = uint64(priorityFee);
         info.sequence = sequence;
-        info.priceKey = priceKey(isBuy(zeroForOne), amountIn, amountOutMin);
+        info.priceKey = priceKey(buy, amountIn, amountOutMin);
         book.openOrders += 1;
         _append(self, id, info);
     }
@@ -142,7 +143,7 @@ library AsyncFiller {
         if (newAmountOutMin == 0) revert ZeroAmountOutMin();
         _remove(self, id, info);
         info.amountOutMin = newAmountOutMin;
-        info.priceKey = priceKey(isBuy(info.zeroForOne), info.amountIn, newAmountOutMin);
+        info.priceKey = priceKey(info.buy, info.amountIn, newAmountOutMin);
         sequence = ++self.book.nextSequence;
         info.sequence = sequence;
         _append(self, id, info);
@@ -176,7 +177,7 @@ library AsyncFiller {
             return (closed, remainingIn, donatedFee, remainingFee);
         }
 
-        uint128 newKey = priceKey(isBuy(info.zeroForOne), remainingIn, remainingMin);
+        uint128 newKey = priceKey(info.buy, remainingIn, remainingMin);
         bool relocate =
             newKey != info.priceKey || (self.book.orderingMode == OrderingMode.PriorityFee && remainingFee != oldFee);
         if (relocate) _remove(self, id, info);
@@ -249,7 +250,7 @@ library AsyncFiller {
     ///      the price tree when it was empty.
     function _append(State storage self, bytes32 id, OrderInfo storage info) private {
         Book storage book = self.book;
-        bool buySide = isBuy(info.zeroForOne);
+        bool buySide = info.buy;
         PriceLevel storage lvl = _level(book, buySide, info.priceKey);
         if (lvl.count == 0) _tree(book, buySide).insert(info.priceKey);
 
@@ -286,7 +287,7 @@ library AsyncFiller {
     /// @dev `_remove`: leave the level; drop the level from the price tree when it empties.
     function _remove(State storage self, bytes32, OrderInfo storage info) private {
         Book storage book = self.book;
-        bool buySide = isBuy(info.zeroForOne);
+        bool buySide = info.buy;
         PriceLevel storage lvl = _level(book, buySide, info.priceKey);
 
         bytes32 previous = info.previous;
