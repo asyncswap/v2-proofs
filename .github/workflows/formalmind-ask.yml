@@ -1,0 +1,45 @@
+# Turns "/ask <role> ..." in an issue, PR or comment into the fm:ask-<role> label, so the
+# dispatcher gives that role the next turn to answer (see "Turns, questions and take-overs" in
+# .github/formalmind/README.md). Works the same for humans and for the swarm's own roles.
+# The older "@fm-<role>" form is accepted too, but don't write it: those handles are not ours.
+name: formalmind ask
+
+on:
+  issue_comment:
+    types: [created]
+  issues:
+    types: [opened]
+  pull_request:
+    types: [opened]
+
+permissions:
+  contents: read
+
+jobs:
+  label:
+    if: contains(github.event.comment.body || github.event.issue.body || github.event.pull_request.body, '/ask ') || contains(github.event.comment.body || github.event.issue.body || github.event.pull_request.body, '@fm-')
+    runs-on: ubuntu-latest
+    steps:
+      # Labels set with the App token trigger the swarm; ones set with GITHUB_TOKEN would not.
+      - id: app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.FORMALMIND_APP_ID }}
+          private-key: ${{ secrets.FORMALMIND_APP_PRIVATE_KEY }}
+      - name: Label the asked roles
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          BODY: ${{ github.event.comment.body || github.event.issue.body || github.event.pull_request.body }}
+          NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+        run: |
+          # "/ask <role>" at the start of a line, optionally after the speaker's **role** prefix.
+          roles=$(printf '%s\n' "$BODY" \
+            | grep -oiE '^[[:space:]]*(\*\*[a-z]+\*\*[[:space:]]+)?/ask[[:space:]]+(planner|prover|reviewer|merger|chief)\b|@fm-(planner|prover|reviewer|merger|chief)\b' \
+            | grep -oiE '(planner|prover|reviewer|merger|chief)$' | tr 'A-Z' 'a-z' | sort -u || true)
+          [ -n "$roles" ] || { echo "no /ask for a role here"; exit 0; }
+          for role in $roles; do
+            gh label create "fm:ask-$role" -R "$GITHUB_REPOSITORY" --color D4C5F9 \
+              --description "a question for the $role; it answers on its next turn" 2>/dev/null || true
+            gh issue edit "$NUMBER" -R "$GITHUB_REPOSITORY" --add-label "fm:ask-$role"
+            echo "#$NUMBER asks the $role"
+          done
