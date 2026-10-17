@@ -58,10 +58,10 @@ next half-hourly sweep; here it still wakes the dispatcher at once.
 | `fm:consolidate` / `fm:consolidating` | decisions to carry into `official/`, queued / in progress |
 | `fm:intent` | behaviour the maintainer described in words but has not built; specified first |
 | `fm:ask-<role>` | someone asked that role a question here; it answers on its next turn |
-| Issue #38 "formalmind ledger" | one comment per run with its cost; the planner's digests; pause notes |
+| Issue #38 "Ledger notebook" | one comment per run with its cost; the planner's digests; pause notes |
 | Issue #55 "Swarm notebook" | one task-list comment per run, crossed out as the work happens |
-| Issue #53 "Chief updates" | the chief's daily audit (the record, not tagged) |
-| Issue #69 "Assistant" | the maintainer's thread: questions to them, their answers, the evening update |
+| Issue #53 "Chief notebook" | the chief's daily audit (the record, not tagged) |
+| Issue #69 "Assistant notebook" | the maintainer's thread: questions to them, their answers, the evening update |
 | `rebuild/` | the Solidity rebuild of v2, built from the proofs only (Foundry); see `rebuild/README.md` |
 | `official/` | the consolidated protocol: v2's code and tests plus the decisions; docs in `official/docs/` |
 | `RebuildSpec/` | **S′**, the spec proved from the rebuild (cycle phase reprove) |
@@ -85,7 +85,7 @@ next half-hourly sweep; here it still wakes the dispatcher at once.
   wide diffs, many rounds, or a false claim), and then squash-merges, bounces, or holds
   the PR for the maintainer (through the assistant).
 - **chief** runs once a day at 23:40 UTC, before the budget resets, and posts one comment
-  on the pinned issue #53 "Chief updates", tagging the maintainer. Its first line is one
+  on the pinned issue #53 "Chief notebook", tagging the maintainer. Its first line is one
   of **Done**, **Working**, **Waiting on you** or **Paused on budget**, followed by what
   landed, what is in flight, what needs the maintainer, and the spend. Following that
   issue is how you know whether the swarm is finished.

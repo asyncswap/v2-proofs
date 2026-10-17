@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   label:
-    # Also: anything the maintainer writes on the Assistant thread (#69) is for the assistant.
+    # Also: anything the maintainer writes on the Assistant notebook (#69) is for the assistant.
     if: contains(github.event.comment.body || github.event.issue.body || github.event.pull_request.body, '/ask ') || contains(github.event.comment.body || github.event.issue.body || github.event.pull_request.body, '@fm-') || (github.event.issue.number == 69 && github.event.comment.user.login == 'mmsaki' && !contains(github.event.comment.body, '@formalmind'))
     runs-on: ubuntu-latest
     steps:

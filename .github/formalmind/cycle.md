@@ -6,7 +6,7 @@ This is the algorithm the swarm runs, end to end. Every role reads it to know wh
 
 - **The draft.** The maintainer's own protocol, `asyncswap/v2` (checked out read-only under
   `protocol/`). The maintainer keeps building it however they like.
-- **Intent.** New behaviour the maintainer describes in words (on the Assistant thread, #69)
+- **Intent.** New behaviour the maintainer describes in words (on the Assistant notebook, #69)
   that is not in the code yet. The assistant files it as an issue labelled `fm:intent`, and it
   counts as a protocol change just like a commit.
 
