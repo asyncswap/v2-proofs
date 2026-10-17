@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import {Deployers} from "v4-core-test/utils/Deployers.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {Hooks} from "v4-core/libraries/Hooks.sol";
+import {LPFeeLibrary} from "v4-core/libraries/LPFeeLibrary.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
@@ -20,10 +21,11 @@ import {AsyncFiller} from "../../src/libraries/AsyncFiller.sol";
 import {ProtocolFee} from "../../src/libraries/ProtocolFee.sol";
 import {MockPermit2} from "./MockPermit2.sol";
 
-/// @notice Shared deployment: PoolManager, two ERC-20s, the hook at a flagged address, Router, FeeVault,
-///         NativeClaims, a mock Permit2, and four pools:
-///         `key` (FIFO, liquidity), `prioKey` (PriorityFee, liquidity), `emptyKey` (PriorityFee, no liquidity),
-///         `nativeKey` (FIFO, native currency0, liquidity).
+/// @notice Shared deployment: PoolManager, three ERC-20s, the hook at a flagged address, Router, FeeVault,
+///         NativeClaims, a mock Permit2, and six pools. The numeraire (`usdc`) is `currency1` in
+///         `key` (FIFO, liquidity), `prioKey` (PriorityFee, liquidity), `emptyKey` (PriorityFee, no liquidity) and
+///         `nativeKey` (FIFO, native currency0, liquidity); it is `currency0` in `flipKey` (FIFO, liquidity) and
+///         `flipPrioKey` (PriorityFee, liquidity), whose other currency is `other`.
 contract BaseTest is Deployers {
     using AsyncOrderLibrary for AsyncOrder;
     using CurrencyLibrary for Currency;
@@ -36,6 +38,11 @@ contract BaseTest is Deployers {
 
     PoolKey prioKey;
     PoolKey emptyKey;
+    PoolKey flipKey;
+    PoolKey flipPrioKey;
+    Currency usdc;
+    /// @dev Sorts above `usdc`, so pools of (`usdc`, `other`) have the numeraire as currency0.
+    Currency other;
     // `nativeKey` is declared by Deployers.
 
     address protocolOwner = makeAddr("protocolOwner");
@@ -57,33 +64,52 @@ contract BaseTest is Deployers {
 
         deployFreshManagerAndRouters();
         deployMintAndApprove2Currencies();
+        usdc = currency1;
+        do {
+            other = deployMintAndApproveCurrency();
+        } while (Currency.unwrap(other) < Currency.unwrap(usdc));
 
         vault = new FeeVault(manager, protocolOwner);
         address hookAddress = address(
             uint160(
-                (uint256(keccak256("AsyncSwap hook")) & ~uint256(Hooks.ALL_HOOK_MASK)) | Hooks.BEFORE_SWAP_FLAG
-                    | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
+                (uint256(keccak256("AsyncSwap hook")) & ~uint256(Hooks.ALL_HOOK_MASK)) | Hooks.BEFORE_INITIALIZE_FLAG
+                    | Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
             )
         );
-        deployCodeTo("AsyncSwap.sol:AsyncSwap", abi.encode(manager, address(vault), protocolOwner), hookAddress);
+        deployCodeTo("AsyncSwap.sol:AsyncSwap", abi.encode(manager, address(vault), usdc, protocolOwner), hookAddress);
         hook = AsyncSwap(payable(hookAddress));
         permit2 = new MockPermit2();
         router = new Router(manager, hook, permit2);
         nativeClaims = new NativeClaims(manager);
 
-        (key,) = initPool(currency0, currency1, IHooks(hook), 3000, 60, Constants.SQRT_PRICE_1_1);
+        (key,) =
+            initPool(currency0, currency1, IHooks(hook), LPFeeLibrary.DYNAMIC_FEE_FLAG, 60, Constants.SQRT_PRICE_1_1);
         modifyLiquidityRouter.modifyLiquidity(key, LIQUIDITY_PARAMS, ZERO_BYTES);
-        (prioKey,) = initPool(currency0, currency1, IHooks(hook), 500, 60, Constants.SQRT_PRICE_1_1);
+        (prioKey,) =
+            initPool(currency0, currency1, IHooks(hook), LPFeeLibrary.DYNAMIC_FEE_FLAG, 10, Constants.SQRT_PRICE_1_1);
         modifyLiquidityRouter.modifyLiquidity(prioKey, LIQUIDITY_PARAMS, ZERO_BYTES);
-        (emptyKey,) = initPool(currency0, currency1, IHooks(hook), 10000, 60, Constants.SQRT_PRICE_1_1);
+        (emptyKey,) =
+            initPool(currency0, currency1, IHooks(hook), LPFeeLibrary.DYNAMIC_FEE_FLAG, 20, Constants.SQRT_PRICE_1_1);
         vm.deal(address(this), 100 ether);
-        (nativeKey,) =
-            initPool(CurrencyLibrary.ADDRESS_ZERO, currency1, IHooks(hook), 3000, 60, Constants.SQRT_PRICE_1_1);
+        (nativeKey,) = initPool(
+            CurrencyLibrary.ADDRESS_ZERO,
+            currency1,
+            IHooks(hook),
+            LPFeeLibrary.DYNAMIC_FEE_FLAG,
+            60,
+            Constants.SQRT_PRICE_1_1
+        );
         modifyLiquidityRouter.modifyLiquidity{value: 10 ether}(nativeKey, LIQUIDITY_PARAMS, ZERO_BYTES);
+        (flipKey,) = initPool(usdc, other, IHooks(hook), LPFeeLibrary.DYNAMIC_FEE_FLAG, 60, Constants.SQRT_PRICE_1_1);
+        modifyLiquidityRouter.modifyLiquidity(flipKey, LIQUIDITY_PARAMS, ZERO_BYTES);
+        (flipPrioKey,) =
+            initPool(usdc, other, IHooks(hook), LPFeeLibrary.DYNAMIC_FEE_FLAG, 10, Constants.SQRT_PRICE_1_1);
+        modifyLiquidityRouter.modifyLiquidity(flipPrioKey, LIQUIDITY_PARAMS, ZERO_BYTES);
 
         vm.startPrank(protocolOwner);
         hook.setOrderingMode(prioKey, AsyncFiller.OrderingMode.PriorityFee);
         hook.setOrderingMode(emptyKey, AsyncFiller.OrderingMode.PriorityFee);
+        hook.setOrderingMode(flipPrioKey, AsyncFiller.OrderingMode.PriorityFee);
         vm.stopPrank();
 
         address[5] memory users = [maker, maker2, maker3, filler, keeper];
@@ -96,15 +122,16 @@ contract BaseTest is Deployers {
     /* ─────────────────────────────────── helpers ─────────────────────────────────── */
 
     function _fund(address who) internal {
-        MockERC20(Currency.unwrap(currency0)).transfer(who, FUND);
-        MockERC20(Currency.unwrap(currency1)).transfer(who, FUND);
+        Currency[3] memory tokens = [currency0, currency1, other];
         vm.deal(who, 1000 ether);
-        vm.startPrank(who);
-        MockERC20(Currency.unwrap(currency0)).approve(address(router), type(uint256).max);
-        MockERC20(Currency.unwrap(currency1)).approve(address(router), type(uint256).max);
-        MockERC20(Currency.unwrap(currency0)).approve(address(permit2), type(uint256).max);
-        MockERC20(Currency.unwrap(currency1)).approve(address(permit2), type(uint256).max);
-        vm.stopPrank();
+        for (uint256 i = 0; i < tokens.length; i++) {
+            MockERC20 token = MockERC20(Currency.unwrap(tokens[i]));
+            token.transfer(who, FUND);
+            vm.startPrank(who);
+            token.approve(address(router), type(uint256).max);
+            token.approve(address(permit2), type(uint256).max);
+            vm.stopPrank();
+        }
     }
 
     function _grantRouter(address who) internal {
@@ -113,6 +140,8 @@ contract BaseTest is Deployers {
         hook.setExecutor(prioKey, address(router), true);
         hook.setExecutor(emptyKey, address(router), true);
         hook.setExecutor(nativeKey, address(router), true);
+        hook.setExecutor(flipKey, address(router), true);
+        hook.setExecutor(flipPrioKey, address(router), true);
         vm.stopPrank();
     }
 
@@ -182,7 +211,7 @@ contract BaseTest is Deployers {
             if (info.amountIn == 0) continue;
             Currency input = info.zeroForOne ? k.currency0 : k.currency1;
             if (input == c) total += info.amountIn;
-            if (c == k.currency1) total += info.priorityFee;
+            if (c == usdc) total += info.priorityFee;
         }
     }
 

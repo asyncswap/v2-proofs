@@ -19,13 +19,21 @@ abstract contract HookSettlement {
     IPoolManager public immutable manager;
     /// @notice Receives protocol fees and forfeited bids as ERC-6909 claims.
     address public immutable feeVault;
+    /// @notice The quote currency (USDC) every pool must contain. Bids are paid in it, and an order that
+    ///         spends it is a buy. It may be either `currency0` or `currency1` of a pool.
+    Currency public immutable numeraire;
+
+    error InvalidNumeraire();
 
     event PriorityFeeDonated(PoolId indexed poolId, uint256 amount);
     event PriorityFeeForfeited(PoolId indexed poolId, uint256 amount);
 
-    constructor(IPoolManager _manager, address _feeVault) {
+    constructor(IPoolManager _manager, address _feeVault, Currency _numeraire) {
+        // A token, never native: bids are pulled with `transferFrom`.
+        if (Currency.unwrap(_numeraire).code.length == 0) revert InvalidNumeraire();
         manager = _manager;
         feeVault = _feeVault;
+        numeraire = _numeraire;
     }
 
     /// @dev `_transferEscrow` (`payOutBody`): burn the hook's escrow claim and pay the recipient — as ERC-6909
@@ -42,12 +50,13 @@ abstract contract HookSettlement {
     function _settlePriorityFee(PoolKey memory key, uint256 amount) internal {
         if (amount == 0) return;
         if (_hasLiquidity(key)) {
-            manager.donate(key, 0, amount, "");
-            key.currency1.settle(manager, address(this), amount, true);
+            bool numeraireIs0 = key.currency0 == numeraire;
+            manager.donate(key, numeraireIs0 ? amount : 0, numeraireIs0 ? 0 : amount, "");
+            numeraire.settle(manager, address(this), amount, true);
             emit PriorityFeeDonated(key.toId(), amount);
         } else {
-            key.currency1.settle(manager, address(this), amount, true);
-            key.currency1.take(manager, feeVault, amount, true);
+            numeraire.settle(manager, address(this), amount, true);
+            numeraire.take(manager, feeVault, amount, true);
             emit PriorityFeeForfeited(key.toId(), amount);
         }
     }
