@@ -17,7 +17,8 @@ permissions:
 
 jobs:
   label:
-    if: contains(github.event.comment.body || github.event.issue.body || github.event.pull_request.body, '/ask ') || contains(github.event.comment.body || github.event.issue.body || github.event.pull_request.body, '@fm-')
+    # Also: anything the maintainer writes on the Assistant thread (#69) is for the assistant.
+    if: contains(github.event.comment.body || github.event.issue.body || github.event.pull_request.body, '/ask ') || contains(github.event.comment.body || github.event.issue.body || github.event.pull_request.body, '@fm-') || (github.event.issue.number == 69 && github.event.comment.user.login == 'mmsaki' && !contains(github.event.comment.body, '@formalmind'))
     runs-on: ubuntu-latest
     steps:
       # Labels set with the App token trigger the swarm; ones set with GITHUB_TOKEN would not.
@@ -31,11 +32,13 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           BODY: ${{ github.event.comment.body || github.event.issue.body || github.event.pull_request.body }}
           NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+          AUTHOR: ${{ github.event.comment.user.login }}
         run: |
           # "/ask <role>" at the start of a line, optionally after the speaker's **role** prefix.
           roles=$(printf '%s\n' "$BODY" \
-            | grep -oiE '^[[:space:]]*(\*\*[a-z]+\*\*[[:space:]]+)?/ask[[:space:]]+(planner|prover|reviewer|merger|chief)\b|@fm-(planner|prover|reviewer|merger|chief)\b' \
-            | grep -oiE '(planner|prover|reviewer|merger|chief)$' | tr 'A-Z' 'a-z' | sort -u || true)
+            | grep -oiE '^[[:space:]]*(\*\*[a-z]+\*\*[[:space:]]+)?/ask[[:space:]]+(planner|prover|rebuilder|consolidator|editor|reviewer|merger|chief|assistant)\b|@fm-(planner|prover|rebuilder|consolidator|editor|reviewer|merger|chief|assistant)\b' \
+            | grep -oiE '(planner|prover|rebuilder|consolidator|editor|reviewer|merger|chief|assistant)$' | tr 'A-Z' 'a-z' | sort -u || true)
+          [ "$NUMBER" = 69 ] && [ "$AUTHOR" = mmsaki ] && roles=$(printf '%s\nassistant\n' "$roles" | grep . | sort -u)
           [ -n "$roles" ] || { echo "no /ask for a role here"; exit 0; }
           for role in $roles; do
             gh label create "fm:ask-$role" -R "$GITHUB_REPOSITORY" --color D4C5F9 \

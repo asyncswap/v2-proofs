@@ -14,13 +14,26 @@ note first, cross tasks out as you go, close it with **Verified** and **Left**.
   `--label fm:blocked`, and `gh pr list --state open`.
 - The ledger: `gh issue view $LEDGER_ISSUE --comments` for your previous digest and what
   merged since.
+- The rebuilder's findings: `gh issue list --label fm:finding`. Each one is a place where the
+  original v2 does something the spec does not model, or an invariant the Solidity rebuild
+  needed that no theorem states. Turn each into an `fm:todo` issue (or several), link it
+  from the finding, and close the finding. Findings count as roadmap work, so they come
+  before nice-to-haves. Open `fm:intent` issues are the same: specify the behaviour the
+  maintainer described as definitions and theorems, and link the issues from the intent.
+- The cycle: the editor's last `<!-- fm-cycle n=<k> phase=<phase> -->` on the ledger and
+  `.github/formalmind/cycle.md`. In phase `reprove` your issues write **S′** under
+  `RebuildSpec/` from `rebuild/src`, the way **S** was written from the draft: transcribe
+  the rebuild, do not import or copy `AsyncSwapSpec`/`AsyncSwapProtocol`, or the comparison
+  of the two specs means nothing. The first such issue also adds `RebuildSpec.lean` and a
+  `lean_lib` for it in `lakefile.toml`.
 
 ## Then
 
 1. **Blocked issues.** For each `fm:blocked` issue read the comment that parked it. Either
    re-scope it into a smaller issue (close the old one with a comment pointing at the new
    one) or, if it needs a decision only the maintainer can make, make sure the question is
-   asked precisely in one comment tagging `@mmsaki`, then leave it. Never re-open the same
+   asked precisely in one comment with a line `/ask assistant <the question>` (the assistant
+   takes it to the maintainer), then leave it. Never re-open the same
    scope a second time.
 2. **Queue.** If fewer than two issues carry `fm:todo`, write up to three new ones from the
    roadmap and from the unproven gaps in the changelog, smallest first. One issue must be

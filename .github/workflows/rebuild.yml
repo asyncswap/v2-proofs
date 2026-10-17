@@ -1,0 +1,28 @@
+name: rebuild
+
+# The Solidity projects are checked whenever they change: rebuild/ (built from the proofs alone)
+# and official/ (the consolidated protocol, which also runs v2's own suite).
+on:
+  push:
+    branches: [dev, main]
+    paths: ["rebuild/**", "official/**", ".gitmodules", ".github/workflows/rebuild.yml"]
+  pull_request:
+    paths: ["rebuild/**", "official/**", ".gitmodules", ".github/workflows/rebuild.yml"]
+
+jobs:
+  forge:
+    name: forge test (${{ matrix.root }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        root: [rebuild, official]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+      - name: Build, with contract sizes (the hook must stay under EIP-170)
+        run: forge build --sizes --root ${{ matrix.root }}
+      - name: Tests, fuzz and invariants
+        run: forge test --root ${{ matrix.root }}

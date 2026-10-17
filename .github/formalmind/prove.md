@@ -52,8 +52,9 @@ those.
   with what is done and what remains, leave the label alone. The next run resumes.
 - **Stuck** (the scope is wrong, a decision is missing, a proof needs a lemma that is out of
   scope): push, comment on the issue with the precise question or problem, run
-  `gh issue edit NUMBER --add-label fm:blocked --remove-label fm:in-progress`, and tag
-  `@mmsaki`. For a PR, use `fm:blocked` on the PR instead.
+  `gh issue edit NUMBER --add-label fm:blocked --remove-label fm:in-progress`, and put the
+  question on its own line starting `/ask assistant`. For a PR, use `fm:blocked` on the PR
+  instead.
 
 ## Voice
 

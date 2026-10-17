@@ -6,21 +6,23 @@ name: formalmind swarm
 # ledger) is the spend log and the planner's digest channel. See .github/formalmind/README.md.
 #
 # Every 30 minutes (or as soon as an `fm:` label changes) the dispatcher picks at most one
-# model job, in this order: merge an approved PR, review a PR, revise a PR the reviewer
-# bounced, resume or start an issue, or plan when the queue is empty. Nothing runs when the
-# day's or month's budget is spent.
+# model job, in this order: answer an /ask (the assistant's first), merge an approved PR,
+# review a PR, revise a bounced PR, resume or start an issue (proof or rebuild), advance the
+# rebuild cycle (the editor) when something moved, or plan when the queue is empty. Nothing runs when the day's or
+# month's budget is spent; the chief and the assistant only have to fit the month.
 on:
   schedule:
     - cron: "*/30 * * * *"
-    - cron: "40 23 * * *"   # the chief reports, once a day before the budget resets
+    - cron: "40 23 * * *"   # the chief audits the day, once before the budget resets
+    - cron: "50 23 * * *"   # the assistant turns the chief's audit into the maintainer's update
   workflow_dispatch:
     inputs:
       role:
-        description: "force a role (plan | prove | review | merge | chief); blank lets the dispatcher decide"
+        description: "force a role (plan | prove | rebuild | editor | consolidate | review | merge | chief | assistant); blank lets the dispatcher decide"
         required: false
         default: ""
       number:
-        description: "issue number (prove) or PR number (prove, review, merge)"
+        description: "issue number (prove, rebuild, consolidate, assistant) or PR number (prove, rebuild, consolidate, review, merge); blank for plan, editor, chief"
         required: false
         default: ""
   issues:
@@ -43,13 +45,21 @@ env:
   LEDGER_ISSUE: "38"
   CHIEF_ISSUE: "53"
   NOTEBOOK_ISSUE: "55"
+  ASSISTANT_ISSUE: "69"
   DAILY_USD: "5.00"
   MONTHLY_USD: "150.00"
   CAP_PLAN: "0.40"
   CAP_REVIEW: "1.00"
   CAP_MERGE: "1.00"
   CAP_PROVE: "3.00"
+  CAP_REBUILD: "3.00"
+  CAP_EDITOR: "1.00"
+  CAP_CONSOLIDATE: "3.00"
   CAP_CHIEF: "0.40"
+  CAP_ASSISTANT: "0.60"
+  # The editor (the rebuild cycle, .github/formalmind/cycle.md) runs at most this often (seconds),
+  # and only when something it compares has moved.
+  EDITOR_EVERY: "43200"
   # Model turns (tool-use steps) a role may take in one run. The dollar caps above usually
   # end a run first; these are the ceiling for long jobs. Change per role as needed.
   TURNS_PLAN: "200"
@@ -57,6 +67,10 @@ env:
   TURNS_REVIEW: "200"
   TURNS_MERGE: "200"
   TURNS_CHIEF: "200"
+  TURNS_REBUILD: "200"
+  TURNS_EDITOR: "200"
+  TURNS_CONSOLIDATE: "200"
+  TURNS_ASSISTANT: "100"
 
 jobs:
   dispatch:
@@ -72,6 +86,7 @@ jobs:
       cap: ${{ steps.pick.outputs.cap }}
       rounds: ${{ steps.pick.outputs.rounds }}
       remaining: ${{ steps.pick.outputs.remaining }}
+      since: ${{ steps.pick.outputs.since }}
     steps:
       - name: formalmind App token
         id: app
@@ -89,8 +104,9 @@ jobs:
           SCHEDULE: ${{ github.event.schedule }}
         run: |
           R="$GITHUB_REPOSITORY"
-          # The daily cron is the reporter's; it only has to fit the month's budget.
+          # The daily crons are the reporters'; they only have to fit the month's budget.
           [ "$SCHEDULE" = "40 23 * * *" ] && FORCE_ROLE=chief
+          [ "$SCHEDULE" = "50 23 * * *" ] && FORCE_ROLE=assistant
           today=$(date -u +%F); month=$(date -u +%Y-%m)
           gh api --paginate "repos/$R/issues/$LEDGER_ISSUE/comments?since=${month}-01T00:00:00Z&per_page=100" \
             --jq '.[] | "\(.created_at) \(.body | gsub("\n"; " "))"' > ledger.txt || true
@@ -104,35 +120,49 @@ jobs:
           oldest_pr() { gh pr list -R "$R" --state open --label "$1" --json number,createdAt --jq 'sort_by(.createdAt) | .[0].number // empty'; }
           oldest_issue() { gh issue list -R "$R" --state open --label "$1" --json number,createdAt --jq 'sort_by(.createdAt) | .[0].number // empty'; }
 
-          role=""; number=""; kind=""; cap=0; mode=work
-          cap_of() { case "$1" in plan) echo "$CAP_PLAN" ;; prove) echo "$CAP_PROVE" ;; review) echo "$CAP_REVIEW" ;; merge) echo "$CAP_MERGE" ;; chief) echo "$CAP_CHIEF" ;; esac; }
+          role=""; number=""; kind=""; cap=0; mode=work; since=""
+          cap_of() { case "$1" in plan) echo "$CAP_PLAN" ;; prove) echo "$CAP_PROVE" ;; rebuild) echo "$CAP_REBUILD" ;; editor) echo "$CAP_EDITOR" ;; consolidate) echo "$CAP_CONSOLIDATE" ;; review) echo "$CAP_REVIEW" ;; merge) echo "$CAP_MERGE" ;; chief) echo "$CAP_CHIEF" ;; assistant) echo "$CAP_ASSISTANT" ;; esac; }
+          is_pr() { gh pr view -R "$R" "$1" --json number >/dev/null 2>&1; }
+          # The parking note asks the assistant, which is the only role that talks to the maintainer.
+          park() { gh issue edit -R "$R" "$1" $3 --add-label fm:blocked
+            gh issue comment -R "$R" "$1" --body "$(printf '**dispatcher** %s\n\n/ask assistant this one is parked; please take it to the maintainer.' "$2")"; }
+          # The dev commit the editor last compared, from its ledger marker (this month's ledger only).
+          edit_since() { grep -o 'fm-edit synced=[0-9a-f]*' ledger.txt | tail -1 | cut -d= -f2; }
           if [ -n "$FORCE_ROLE" ]; then
             role="$FORCE_ROLE"; number="$FORCE_NUMBER"
             case "$role" in
               plan) cap=$CAP_PLAN; kind=none ;;
-              chief) cap=$CAP_CHIEF; kind=none
-                remaining=$(awk -v m="$MONTHLY_USD" -v mo="$spent_month" 'BEGIN { printf "%.2f", m - mo }') ;;
+              chief) cap=$CAP_CHIEF; kind=none ;;
+              assistant) cap=$CAP_ASSISTANT; kind=none
+                if [ -n "$number" ]; then mode=answer; else mode=digest; fi ;;
               review) cap=$CAP_REVIEW; kind=pr ;;
               merge) cap=$CAP_MERGE; kind=pr ;;
               prove) cap=$CAP_PROVE
-                if gh pr view -R "$R" "$number" --json number >/dev/null 2>&1; then kind=pr; else kind=issue; fi ;;
+                if is_pr "$number"; then kind=pr; else kind=issue; fi ;;
+              rebuild) cap=$CAP_REBUILD
+                if is_pr "$number"; then kind=pr; else kind=issue; fi ;;
+              editor) cap=$CAP_EDITOR; kind=none; since=$(edit_since) ;;
+              consolidate) cap=$CAP_CONSOLIDATE
+                if is_pr "$number"; then kind=pr; else kind=issue; fi ;;
               *) echo "::error::unknown role $role"; exit 1 ;;
             esac
           else
-            # 0. answer: a question someone asked a role with /ask (label fm:ask-<role>) comes first.
-            for asked in merger reviewer prover planner chief; do
+            # 0. answer: a question someone asked a role with /ask (label fm:ask-<role>) comes first,
+            #    and the maintainer's assistant before everyone else.
+            for asked in assistant merger reviewer prover rebuilder consolidator editor planner chief; do
               [ -n "$role" ] && break
               for n in $(gh api "repos/$R/issues?labels=fm:ask-$asked&state=open&sort=created&direction=asc&per_page=20" --jq '.[].number'); do
                 answers=$(grep "^$today" ledger.txt | grep "ref=#$n " | grep -c "mode=answer" || true)
-                if [ "$answers" -ge 3 ]; then
-                  gh issue edit -R "$R" "$n" --remove-label "fm:ask-$asked" --add-label fm:blocked
-                  gh issue comment -R "$R" "$n" --body "**dispatcher** this item has had three answers today and still has an open question for the $asked, so I'm parking it rather than letting the roles talk in circles. @mmsaki, have a look when you can."
+                # The assistant is where parked items go, so it is never parked itself.
+                if [ "$asked" != assistant ] && [ "$answers" -ge 3 ]; then
+                  park "$n" "this item has had three answers today and still has an open question for the $asked, so I'm parking it rather than letting the roles talk in circles." "--remove-label fm:ask-$asked"
                   continue
                 fi
-                case "$asked" in planner) role=plan ;; prover) role=prove ;; reviewer) role=review ;; merger) role=merge ;; chief) role=chief ;; esac
+                case "$asked" in planner) role=plan ;; prover) role=prove ;; rebuilder) role=rebuild ;; consolidator) role=consolidate ;; editor) role=editor ;; reviewer) role=review ;; merger) role=merge ;; chief) role=chief ;; assistant) role=assistant ;; esac
                 number=$n; mode=answer; cap=$(cap_of "$role")
-                if gh pr view -R "$R" "$n" --json number >/dev/null 2>&1; then kind=pr
-                elif [ "$role" = prove ]; then kind=issue
+                if [ "$role" = assistant ]; then kind=none
+                elif is_pr "$n"; then kind=pr
+                elif [ "$role" = prove ] || [ "$role" = rebuild ] || [ "$role" = consolidate ]; then kind=issue
                 else kind=none; fi
                 break
               done
@@ -142,23 +172,60 @@ jobs:
             # 2. review: a PR waiting for the reviewer
             [ -z "$role" ] && { n=$(oldest_pr fm:review); [ -n "$n" ] && { role=review; number=$n; kind=pr; cap=$CAP_REVIEW; }; }
             # 3. revise: a PR the reviewer or merger bounced, or one that conflicts with dev
-            [ -z "$role" ] && { n=$(oldest_pr fm:changes); [ -z "$n" ] && n=$(oldest_pr fm:needs-rebase); [ -n "$n" ] && { role=prove; number=$n; kind=pr; cap=$CAP_PROVE; }; }
-            # 4. resume: an in-progress issue whose branch has no open PR (a prover run was cut off)
+            #    The rebuilder's PRs (branches fm/rebuild-<n>) go back to the rebuilder.
             if [ -z "$role" ]; then
-              for i in $(gh issue list -R "$R" --state open --label fm:in-progress --json number,createdAt --jq 'sort_by(.createdAt) | .[].number'); do
-                if [ -z "$(gh pr list -R "$R" --state open --head "fm/issue-$i" --json number --jq '.[0].number // empty')" ]; then
-                  tries=$(grep "^$today" ledger.txt | grep -c "role=prove ref=#$i " || true)
+              n=$(oldest_pr fm:changes); [ -z "$n" ] && n=$(oldest_pr fm:needs-rebase)
+              if [ -n "$n" ]; then
+                number=$n; kind=pr
+                case "$(gh pr view -R "$R" "$n" --json headRefName --jq .headRefName)" in
+                  fm/rebuild-*) role=rebuild; cap=$CAP_REBUILD ;;
+                  fm/consolidate-*) role=consolidate; cap=$CAP_CONSOLIDATE ;;
+                  *) role=prove; cap=$CAP_PROVE ;;
+                esac
+              fi
+            fi
+            # 4. resume: an in-progress issue whose branch has no open PR (a run was cut off)
+            resume() { # <label> <branch prefix> <role>
+              for i in $(gh issue list -R "$R" --state open --label "$1" --json number,createdAt --jq 'sort_by(.createdAt) | .[].number'); do
+                if [ -z "$(gh pr list -R "$R" --state open --head "$2-$i" --json number --jq '.[0].number // empty')" ]; then
+                  tries=$(grep "^$today" ledger.txt | grep -c "role=$3 ref=#$i " || true)
                   if [ "$tries" -ge 2 ]; then
-                    gh issue edit -R "$R" "$i" --remove-label fm:in-progress --add-label fm:blocked
-                    gh issue comment -R "$R" "$i" --body "**dispatcher** two prover runs today ended without a pull request, so I'm parking this one. @mmsaki, have a look when you can; the branch \`fm/issue-$i\` has whatever was pushed."
+                    park "$i" "two $3 runs today ended without a pull request, so I'm parking this one; the branch \`$2-$i\` has whatever was pushed." "--remove-label $1"
                     continue
                   fi
-                  role=prove; number=$i; kind=issue; cap=$CAP_PROVE; break
+                  role=$3; number=$i; kind=issue; cap=$(cap_of "$3"); return
                 fi
               done
+            }
+            [ -z "$role" ] && resume fm:in-progress fm/issue prove
+            [ -z "$role" ] && resume fm:rebuilding fm/rebuild rebuild
+            [ -z "$role" ] && resume fm:consolidating fm/consolidate consolidate
+            # 5. new work: the oldest queued issue, a proof (fm:todo) or a rebuild (fm:rebuild)
+            if [ -z "$role" ]; then
+              set -- $( { gh issue list -R "$R" --state open --label fm:todo --json number,createdAt --jq '.[] | "\(.createdAt) \(.number) prove"'
+                          gh issue list -R "$R" --state open --label fm:rebuild --json number,createdAt --jq '.[] | "\(.createdAt) \(.number) rebuild"'
+                          gh issue list -R "$R" --state open --label fm:consolidate --json number,createdAt --jq '.[] | "\(.createdAt) \(.number) consolidate"'; } | sort | head -1 )
+              [ -n "${2:-}" ] && { role=$3; number=$2; kind=issue; cap=$(cap_of "$3"); }
             fi
-            # 5. new work
-            [ -z "$role" ] && { n=$(oldest_issue fm:todo); [ -n "$n" ] && { role=prove; number=$n; kind=issue; cap=$CAP_PROVE; }; }
+            # 5b. editor: the rebuild cycle moves on when the spec, the rebuild, the draft (via its
+            #     reconcile entries in FORMAL_MIND.md) or an fm:intent changed since the editor
+            #     last looked, at most once every EDITOR_EVERY.
+            if [ -z "$role" ]; then
+              since=$(edit_since)
+              last=$(grep 'fm-edit synced' ledger.txt | tail -1); when=${last%% *}
+              age=$(( $(date -u +%s) - $(date -u -d "${when:-1970-01-01T00:00:00Z}" +%s) ))
+              moved=1
+              if [ -n "$since" ]; then
+                head=$(gh api "repos/$R/commits/dev" --jq .sha)
+                moved=$(gh api "repos/$R/compare/$since...$head" --jq '[.files[].filename | select(startswith("AsyncSwap") or startswith("RebuildSpec") or startswith("rebuild/") or . == "README.md" or . == "FORMAL_MIND.md")] | length' || echo 1)
+                [ "$moved" = 0 ] && moved=$(gh issue list -R "$R" --state all --label fm:intent --search "updated:>$when" --json number --jq length || echo 0)
+              fi
+              if [ "$moved" != 0 ] && [ "$age" -ge "$EDITOR_EVERY" ]; then
+                role=editor; kind=none; cap=$CAP_EDITOR
+              else
+                since=""
+              fi
+            fi
             # 6. plan when the queue is empty, unless the last plan said idle less than a day ago
             if [ -z "$role" ]; then
               # ledger.txt lines start with the comment's created_at, which is the trustworthy clock
@@ -173,6 +240,10 @@ jobs:
             fi
           fi
 
+          # The chief and the assistant (who talks to the maintainer) only have to fit the month.
+          if [ "$role" = chief ] || [ "$role" = assistant ]; then
+            remaining=$(awk -v m="$MONTHLY_USD" -v mo="$spent_month" 'BEGIN { printf "%.2f", m - mo }')
+          fi
           if [ -n "$role" ] && ! affordable "$cap"; then
             echo "budget: $role needs \$$cap but only \$$remaining is left"
             grep -q "^$today.*fm-paused" ledger.txt || gh issue comment -R "$R" "$LEDGER_ISSUE" --body "<!-- fm-paused --> **dispatcher** paused: \$$spent_today spent today and \$$spent_month this month, the next job needs \$$cap. Back when the budget resets."
@@ -183,10 +254,16 @@ jobs:
           if [ "$role" = prove ] && [ "$kind" = issue ] && [ "$mode" = work ]; then
             gh issue edit -R "$R" "$number" --remove-label fm:todo --add-label fm:in-progress 2>/dev/null || true
           fi
-          echo "picked: ${role:-nothing} ${mode} ${kind:-} ${number:-} (cap \$$cap, rounds $rounds)"
+          if [ "$role" = rebuild ] && [ "$kind" = issue ] && [ "$mode" = work ]; then
+            gh issue edit -R "$R" "$number" --remove-label fm:rebuild --add-label fm:rebuilding 2>/dev/null || true
+          fi
+          if [ "$role" = consolidate ] && [ "$kind" = issue ] && [ "$mode" = work ]; then
+            gh issue edit -R "$R" "$number" --remove-label fm:consolidate --add-label fm:consolidating 2>/dev/null || true
+          fi
+          echo "picked: ${role:-nothing} ${mode} ${kind:-} ${number:-} (cap \$$cap, rounds $rounds${since:+, since $since})"
           {
             echo "role=$role"; echo "mode=$mode"; echo "number=$number"; echo "kind=$kind"; echo "cap=$cap"
-            echo "rounds=$rounds"; echo "remaining=$remaining"
+            echo "rounds=$rounds"; echo "remaining=$remaining"; echo "since=$since"
           } >> "$GITHUB_OUTPUT"
 
   agent:
@@ -222,18 +299,20 @@ jobs:
           if [ "$KIND" = pr ]; then
             gh pr checkout "$NUMBER"
           elif [ "$KIND" = issue ]; then
-            if git ls-remote --exit-code --heads origin "fm/issue-$NUMBER" >/dev/null; then
-              git fetch origin "fm/issue-$NUMBER" && git switch "fm/issue-$NUMBER"
+            b="fm/issue-$NUMBER"; [ "$ROLE" = rebuild ] && b="fm/rebuild-$NUMBER"; [ "$ROLE" = consolidate ] && b="fm/consolidate-$NUMBER"
+            if git ls-remote --exit-code --heads origin "$b" >/dev/null; then
+              git fetch origin "$b" && git switch "$b"
             else
-              git switch -c "fm/issue-$NUMBER"
+              git switch -c "$b"
             fi
           fi
           {
             echo "branch=$(git branch --show-current)"
             echo "sha=$(git rev-parse HEAD)"
           } >> "$GITHUB_OUTPUT"
+      # The rebuilder never sees the draft: its rebuild must come from the proofs alone.
       - name: Check out the protocol the spec models (read-only, under protocol/)
-        if: ${{ env.ROLE != 'plan' }}
+        if: ${{ env.ROLE != 'plan' && env.ROLE != 'rebuild' }}
         uses: actions/checkout@v4
         with:
           repository: asyncswap/v2
@@ -254,6 +333,11 @@ jobs:
           restore-keys: lake-${{ runner.os }}-
       - run: lake exe cache get
         if: ${{ env.ROLE == 'prove' || env.ROLE == 'merge' }}
+      - name: Foundry and the rebuild's libraries
+        if: ${{ env.ROLE == 'rebuild' || env.ROLE == 'consolidate' || env.ROLE == 'merge' }}
+        uses: foundry-rs/foundry-toolchain@v1
+      - run: git submodule update --init --recursive rebuild/lib official/dependencies
+        if: ${{ env.ROLE == 'rebuild' || env.ROLE == 'consolidate' || env.ROLE == 'merge' }}
       - name: Gate on a clean build before the merger looks
         id: gate
         if: ${{ env.ROLE == 'merge' && env.MODE != 'answer' }}
@@ -266,15 +350,24 @@ jobs:
             echo "clean=false" >> "$GITHUB_OUTPUT"
             git merge --abort || true
             gh pr edit "$NUMBER" --remove-label fm:approved --add-label fm:needs-rebase
-            gh pr comment "$NUMBER" --body "**merger** this branch conflicts with \`dev\` now, so it goes back to the prover for a rebase before I look at it."
+            gh pr comment "$NUMBER" --body "**merger** this branch conflicts with \`dev\` now, so it goes back for a rebase before I look at it."
             exit 0
           fi
-          if lake build 2>&1 | tee build.log && ! grep -rn --include='*.lean' -E '\bsorry\b' AsyncSwapSpec AsyncSwapProtocol; then
+          # Rebuild and official PRs also have to pass their Foundry suites.
+          forge_ok=true
+          : > build.log
+          for root in rebuild official; do
+            if [ -n "$(git diff --name-only origin/dev HEAD -- "$root" .gitmodules)" ]; then
+              git submodule update --init --recursive rebuild/lib official/dependencies
+              (forge build --sizes --root "$root" && forge test --root "$root") >> build.log 2>&1 || forge_ok=false
+            fi
+          done
+          if $forge_ok && lake build 2>&1 | tee -a build.log && ! grep -rn --include='*.lean' -E '\bsorry\b' AsyncSwapSpec AsyncSwapProtocol $(ls -d RebuildSpec 2>/dev/null); then
             echo "clean=true" >> "$GITHUB_OUTPUT"
           else
             echo "clean=false" >> "$GITHUB_OUTPUT"
             gh pr edit "$NUMBER" --remove-label fm:approved --add-label fm:changes
-            { echo "**merger** the build is not clean on $(git rev-parse --short HEAD), so this goes back to the prover. Tail of \`lake build\`:"; echo; echo '```text'; tail -40 build.log; echo '```'; } > bounce.md
+            { echo "**merger** the build is not clean on $(git rev-parse --short HEAD), so this goes back to its author. Tail of the build:"; echo; echo '```text'; tail -40 build.log; echo '```'; } > bounce.md
             gh pr comment "$NUMBER" --body-file bounce.md
           fi
       - name: Tools for this role
@@ -286,13 +379,19 @@ jobs:
             plan) allowed="$base,Bash(gh issue create:*)" ;;
             chief) allowed="$base,Bash(gh run list:*)" ;;
             review) allowed="$base,mcp__github_inline_comment__create_inline_comment" ;;
-            merge) allowed="$base,mcp__github_inline_comment__create_inline_comment,Bash(lake:*),Write" ;;
+            merge) allowed="$base,mcp__github_inline_comment__create_inline_comment,Bash(lake:*),Bash(forge:*),Write" ;;
             prove) allowed="$base,Edit,Write,Bash(lake:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git rebase:*),Bash(git merge:*),Bash(git switch:*),Bash(git checkout:*),Bash(git stash:*),Bash(gh pr create:*)" ;;
+            rebuild) allowed="$base,Edit,Write,Bash(forge:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git rebase:*),Bash(git merge:*),Bash(git switch:*),Bash(git checkout:*),Bash(git stash:*),Bash(git submodule:*),Bash(gh pr create:*),Bash(gh issue create:*)" ;;
+            # The assistant acts through labels, comments and issues; it never touches code.
+            assistant) allowed="$base,Bash(gh issue create:*)" ;;
+            editor) allowed="$base,Bash(gh issue create:*)" ;;
+            consolidate) allowed="$base,Edit,Write,Bash(forge:*),Bash(lake:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git rebase:*),Bash(git merge:*),Bash(git switch:*),Bash(git checkout:*),Bash(git stash:*),Bash(git submodule:*),Bash(gh pr create:*),Bash(gh issue create:*)" ;;
           esac
           echo "allowed=$allowed" >> "$GITHUB_OUTPUT"
           case "$ROLE" in
             plan) turns=$TURNS_PLAN ;; prove) turns=$TURNS_PROVE ;; review) turns=$TURNS_REVIEW ;;
-            merge) turns=$TURNS_MERGE ;; chief) turns=$TURNS_CHIEF ;; *) turns=200 ;;
+            merge) turns=$TURNS_MERGE ;; chief) turns=$TURNS_CHIEF ;; rebuild) turns=$TURNS_REBUILD ;; editor) turns=$TURNS_EDITOR ;; consolidate) turns=$TURNS_CONSOLIDATE ;;
+            assistant) turns=$TURNS_ASSISTANT ;; *) turns=200 ;;
           esac
           echo "turns=$turns" >> "$GITHUB_OUTPUT"
       - uses: anthropics/claude-code-action@v1
@@ -309,22 +408,24 @@ jobs:
           include_fix_links: "false"
           prompt: |
             You are the ${{ env.ROLE }} of the formalmind swarm and it is your turn. Read
-            .github/formalmind/README.md, then .github/formalmind/${{ env.MODE == 'answer' && 'answer' || env.ROLE }}.md,
+            .github/formalmind/README.md, then .github/formalmind/${{ env.ROLE == 'assistant' && 'assistant' || (env.MODE == 'answer' && 'answer' || env.ROLE) }}.md,
             and follow them.
 
             ROLE=${{ env.ROLE }}
-            MODE=${{ env.MODE }}  (answer: someone asked you a question on NUMBER; work: your usual job)
+            MODE=${{ env.MODE }}  (answer: someone asked you a question on NUMBER; work: your usual job; digest: the assistant's evening update)
             REPO=${{ github.repository }}
             KIND=${{ env.KIND }}
             NUMBER=${{ env.NUMBER }}
             BRANCH=${{ steps.ctx.outputs.branch }}
             SHA=${{ steps.ctx.outputs.sha }}
-            PROTOCOL_DIR=protocol  (the Solidity of asyncswap/v2, read-only; absent for the planner)
+            PROTOCOL_DIR=protocol  (the Solidity of asyncswap/v2, read-only; absent for the planner and the rebuilder)
             ROUNDS=${{ needs.dispatch.outputs.rounds }}
             BUDGET_USD=${{ env.CAP }}
             LEDGER_ISSUE=${{ env.LEDGER_ISSUE }}
             CHIEF_ISSUE=${{ env.CHIEF_ISSUE }}
             NOTEBOOK_ISSUE=${{ env.NOTEBOOK_ISSUE }}
+            ASSISTANT_ISSUE=${{ env.ASSISTANT_ISSUE }}
+            SINCE=${{ needs.dispatch.outputs.since }}  (editor only: the dev commit it last compared; empty = none this month)
             RUN_ID=${{ github.run_id }}
             RUN_URL=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           claude_args: >-
