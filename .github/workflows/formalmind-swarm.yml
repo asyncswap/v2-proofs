@@ -46,9 +46,9 @@ env:
   DAILY_USD: "5.00"
   MONTHLY_USD: "150.00"
   CAP_PLAN: "0.40"
-  CAP_REVIEW: "0.40"
-  CAP_MERGE: "0.40"
-  CAP_PROVE: "1.20"
+  CAP_REVIEW: "1.00"
+  CAP_MERGE: "1.00"
+  CAP_PROVE: "3.00"
   CAP_CHIEF: "0.40"
   # Model turns (tool-use steps) a role may take in one run. The dollar caps above usually
   # end a run first; these are the ceiling for long jobs. Change per role as needed.

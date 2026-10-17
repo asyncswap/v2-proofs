@@ -122,7 +122,7 @@ not a failure. A claim in **Verified** that the chief cannot confirm on `dev` is
 ## Budget
 
 `$5.00` a day and `$150.00` a month, enforced by the dispatcher from the ledger. Each role
-runs under its own cap (`--max-budget-usd`): plan, review and merge `$0.40`, prove `$1.20`.
+runs under its own cap (`--max-budget-usd`): plan and chief `$0.40`, review and merge `$1.00`, prove `$3.00`.
 Answering a question costs the asked role's own cap, since it may take the job over.
 Within its turn a role may take up to 200 model steps (`TURNS_<ROLE>` in the workflow, set
 per role); the dollar cap is what normally ends a run, the step limit is only the ceiling.
