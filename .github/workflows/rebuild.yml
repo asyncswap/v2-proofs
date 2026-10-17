@@ -1,0 +1,23 @@
+name: rebuild
+
+# The Solidity rebuild under rebuild/ is checked whenever it changes.
+on:
+  push:
+    branches: [dev, main]
+    paths: ["rebuild/**", ".gitmodules", ".github/workflows/rebuild.yml"]
+  pull_request:
+    paths: ["rebuild/**", ".gitmodules", ".github/workflows/rebuild.yml"]
+
+jobs:
+  forge:
+    name: forge test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+      - name: Build, with contract sizes (the hook must stay under EIP-170)
+        run: forge build --sizes --root rebuild
+      - name: Tests, fuzz and invariants
+        run: forge test --root rebuild
