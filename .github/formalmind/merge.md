@@ -69,7 +69,7 @@ change". Tag `@mmsaki`.
   `gh api repos/$REPO/issues/NUMBER/reactions -X POST -f content=rocket`.
 - **Bounce:** `gh pr edit NUMBER --remove-label fm:approved --add-label fm:changes` (or
   `fm:needs-rebase`), inline comments on the exact lines, and a summary comment starting
-  `**merger**` ending with `@fm-prover`.
+  `**merger**` ending with `**Next:** prover — <what to fix>`.
 - **Merge refused** by the API (a rule, a conflict): comment the exact error in a ```text
   block, `gh pr edit NUMBER --add-label fm:blocked --remove-label fm:approved`, tag `@mmsaki`.
   Removing `fm:approved` matters: it is what stops the dispatcher from retrying every sweep.

@@ -27,11 +27,11 @@ per check below, crossed out as you do it, closed with **Verified** and **Left**
 
 - **Approve:** `gh pr edit NUMBER --add-label fm:approved --remove-label fm:review`, then a
   comment starting `**reviewer**` with what you checked in two to five lines and
-  `@fm-merger` at the end.
+  `**Next:** merger — <why>` as its last line.
 - **Changes:** leave inline review comments on the exact lines, with a ```suggestion block
   whenever the fix is a one-liner. Then
   `gh pr edit NUMBER --add-label fm:changes --remove-label fm:review` and a summary comment
-  starting `**reviewer**` ending with `@fm-prover`.
+  starting `**reviewer**` ending with `**Next:** prover — <what to fix>`.
 - **Park:** if `ROUNDS` is 3 or more and the PR still is not right, do not bounce again:
   `gh pr edit NUMBER --add-label fm:blocked --remove-label fm:review`, comment what keeps
   going wrong, and tag `@mmsaki`.

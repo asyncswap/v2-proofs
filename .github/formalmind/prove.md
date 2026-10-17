@@ -46,7 +46,8 @@ those.
   that states what changed and contains the line `Closes #NUMBER`, or for a revision
   `gh pr edit NUMBER --add-label fm:review --remove-label fm:changes --remove-label fm:needs-rebase`.
   Comment on the PR: `**prover**`, two to six lines on what you did and anything the
-  reviewer should look at closely, permalinks at the pushed SHA, then `@fm-reviewer`.
+  reviewer should look at closely, permalinks at the pushed SHA, then
+  `**Next:** reviewer — <what to look at first>`.
 - **Partly done** (budget or turns running out): push what you have, comment on the issue
   with what is done and what remains, leave the label alone. The next run resumes.
 - **Stuck** (the scope is wrong, a decision is missing, a proof needs a lemma that is out of
