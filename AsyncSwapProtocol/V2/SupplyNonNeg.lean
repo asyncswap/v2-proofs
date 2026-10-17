@@ -50,9 +50,8 @@ theorem SupplyEq.bump {w w' : World} (h : SupplyEq w) (c : Currency) (d : Addres
     · rw [Finset.mem_insert, not_or] at ha
       rw [hc, Function.update_self, Function.update_of_ne ha.1]; exact hz a ha.2
     · rw [hs, hc, Function.update_self, Function.update_self,
-        Finset.sum_update_of_mem (Finset.mem_insert_self d S), ← hins,
-        Finset.sum_eq_add_sum_diff_singleton (Finset.mem_insert_self d S), hsum, ← hins,
-        Finset.sum_eq_add_sum_diff_singleton (Finset.mem_insert_self d S)]
+        Finset.sum_update_of_mem (Finset.mem_insert_self d S), hsum, ← hins,
+        Finset.sdiff_singleton_eq_erase, ← Finset.add_sum_erase _ _ (Finset.mem_insert_self d S)]
       ring
   · refine ⟨S, fun a ha => ?_, ?_⟩
     · rw [hc, Function.update_of_ne hc']; exact hz a ha
@@ -84,7 +83,9 @@ theorem tracks_burn {t s : Tx} (h : Tracks t s) c d n b : Tracks t (s.burn c d n
 
 theorem tracks_donate {t s : Tx} (h : Tracks t s) c n b : Tracks t (s.donate c n b) := by
   refine ⟨fun c' => (h.1 c').trans ?_, fun hS => h.2 hS⟩
-  simp only [donate, Function.update_apply]; split_ifs <;> omega
+  simp only [donate, Function.update_apply]; split_ifs with hc
+  · subst hc; omega
+  · exact le_refl _
 
 theorem tracks_transfer {t s : Tx} (h : Tracks t s) c a d n : Tracks t (s.transfer c a d n) :=
   tracks_of_eq h rfl rfl rfl
@@ -131,7 +132,7 @@ theorem tracks_settleBidBody {cfg : Config} {t s : Tx} (h : Tracks t s) n :
 
 theorem tracks_reduceSideBody (cfg : Config) (t : Tx) k cp used received :
     Tracks t (reduceSideBody cfg t k cp used received) := by
-  have h2 := tracks_settleBidBody (cfg := cfg) (tracks_payOutBody (tracks_refl t) k.input cp used)
+  have h2 := tracks_settleBidBody (cfg := cfg) (tracks_payOutBody (cfg := cfg) (tracks_refl t) k.input cp used)
     ((OrderInfo.toSpec k (t.w.orders k)).donatedFee ⟨used, received⟩)
   simp only [reduceSideBody]
   split_ifs
@@ -249,7 +250,7 @@ theorem step_supply_inv {cfg : Config} {w w' : World} {a : Action} (h : step cfg
   | fillFromPoolLiquidity _ o n =>
     simp only [step, fillFromPoolLiquidity] at h
     split_ifs at h with hg; simp only [Option.some.injEq] at h; subst h
-    exact liquidityFill_inv hg.1.2.2.2.1
+    exact liquidityFill_inv hg.1.2.2.2.2.1
   | redeemNative s n r =>
     simp only [step, redeemNative] at h
     split_ifs at h; simp only [Option.some.injEq] at h; subst h
