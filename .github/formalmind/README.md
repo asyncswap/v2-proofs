@@ -112,3 +112,19 @@ posts one pause note on the ledger and waits for the reset (UTC midnight, first 
 starts or resumes issue 12; `-f role=review -f number=40` or `-f role=merge -f number=40`
 act on PR 40. Labelling by hand works too: put `fm:todo` on any issue to queue it, or
 `fm:approved` on any PR to send it to the merger.
+
+## The project board
+
+The labels are the state, and a GitHub Project mirrors them one to one, so the board on
+GitHub and the Kanban in the Formal Mind app always agree. `formalmind-project.yml` sets each
+item's **Status** on every label, open and close event (and sweeps hourly) with the same rules
+as the app: closed is Done; then `fm:blocked`, `fm:approved`, `fm:in-progress`/`fm:changes`/
+`fm:needs-rebase` (In progress); any other open PR is In review; `fm:todo` is Todo; anything
+else has no Status. **Roadmap item** follows "roadmap item N" in the title or body, and Start
+and Target date are opened and merged, so the project's Roadmap layout draws the same bars.
+Agents never touch the board directly: they move labels, and the board follows.
+
+Setup, once: `gh auth refresh -s project`, run `.github/formalmind/project-setup.sh`, store the
+number it prints with `gh variable set FORMALMIND_PROJECT`, and give the formalmind GitHub App
+the organization permission **Projects: read and write**. Then run the workflow by hand to
+fill the board.

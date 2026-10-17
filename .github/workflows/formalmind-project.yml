@@ -1,0 +1,49 @@
+# Keeps the swarm's GitHub Project one to one with the fm: labels (and so with the Kanban in
+# the Formal Mind app). Each label, open or close event syncs that item; an hourly sweep and
+# a manual run sync everything. Logic: .github/formalmind/project-sync.sh.
+name: formalmind project
+
+on:
+  issues:
+    types: [opened, reopened, closed, labeled, unlabeled, edited]
+  pull_request:
+    types: [opened, reopened, closed, labeled, unlabeled, edited, ready_for_review]
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: formalmind-project-${{ github.event.issue.number || github.event.pull_request.number || 'all' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    if: vars.FORMALMIND_PROJECT != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/formalmind
+
+      # An org-wide installation token: Projects live on the organization, not the repository.
+      - id: app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.FORMALMIND_APP_ID }}
+          private-key: ${{ secrets.FORMALMIND_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Sync
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PROJECT_NUMBER: ${{ vars.FORMALMIND_PROJECT }}
+          NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+        run: |
+          if [ -n "$NUMBER" ]; then
+            bash .github/formalmind/project-sync.sh "$NUMBER"
+          else
+            bash .github/formalmind/project-sync.sh --all
+          fi
