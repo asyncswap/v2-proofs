@@ -6,6 +6,32 @@ could not be proved, and what the build said. Humans may add entries too; keep t
 
 <!-- formal-mind: insert new entries directly below this line -->
 
+## 2026-10-17 — asyncswap/v2-proofs issue #61 — spec: pool reserves and claim supply stay non-negative across every v2 entry point
+
+**Trigger:** swarm issue #61.
+
+**Contract change.** None.
+
+**Spec impact.** New `AsyncSwapProtocol/V2/SupplyNonNeg.lean`, imported from the `AsyncSwapProtocol`
+root. No other module touched. The model has no `Backing` invariant, and nothing else ties
+`claimsSupply` to the claim balances. So the module first proves `SupplyEq` as its own
+preserved invariant: `claimsSupply c = Σ a ∈ S, claims c a` over a finite support `S`. The
+support is needed because `Address = ℕ`.
+
+**Theorems added.** `ReservesNonNeg`; `SupplyEq`; `SupplyEq.bump` (`mint`/`burn` keep it);
+`claimsSupply_nonneg` (`SupplyEq` plus `ClaimsNonNeg` give `0 ≤ claimsSupply c`); the `Tracks`
+relation (reserves only grow, `SupplyEq` carries over), with one lemma per ledger op and per body;
+`liquidityFill_inv`; `step_supply_inv`, `step_reserves_nonneg`, `step_supplyEq` (every v2 entry
+point, no hypothesis); `step_claimsSupply_nonneg` (under the hypotheses of `step_claims_nonneg`).
+
+**Theorems changed or weakened.** None.
+
+**Unproven gaps.** None. No hypothesis was added for reserves: `liquidityFillGuard` already
+requires `amountOut ≤ reserves o.output` (`Model.lean:435`). `poolSwap` in
+`fillFromPoolLiquidity` is the only reserve debit, and its input and output currencies differ.
+
+**Build.** `lake build` clean, no `sorry`, no new axioms.
+
 ## 2026-10-17 — asyncswap/v2-proofs issue #60 — spec: wallet balances outside the PoolManager stay non-negative across every v2 entry point
 
 **Trigger:** swarm issue #60.
