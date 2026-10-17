@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {Hooks} from "v4-core/libraries/Hooks.sol";
+import {LPFeeLibrary} from "v4-core/libraries/LPFeeLibrary.sol";
 import {TickMath} from "v4-core/libraries/TickMath.sol";
 import {TransientStateLibrary} from "v4-core/libraries/TransientStateLibrary.sol";
 import {Currency, CurrencyLibrary} from "v4-core/types/Currency.sol";
@@ -53,6 +54,8 @@ contract AsyncSwap is IHooks, HookSettlement, Owned2Step, EIP712 {
     }
 
     uint256 public constant MAX_MATCHES_PER_CALL = AsyncMatching.MAX_MATCHES_PER_CALL;
+    /// @notice LP fee (hundredths of a bip) the pool charges on `fillFromPoolLiquidity`: 0.30%.
+    uint24 public constant POOL_LIQUIDITY_FILL_FEE = 3000;
 
     /// @dev Transient: native output deposited by the filler for the fill in progress (`PENDING_NATIVE_DEPOSIT_SLOT`).
     bytes32 private constant PENDING_NATIVE_DEPOSIT_SLOT = keccak256("AsyncSwap.pendingNativeDeposit");
@@ -80,6 +83,8 @@ contract AsyncSwap is IHooks, HookSettlement, Owned2Step, EIP712 {
     error PartialLiquidityFill(uint256 amountIn, uint256 swapped);
     error LimitPriceNotMet(uint256 amountOutMin, uint256 amountOut);
     error NativeTransferFailed();
+    error NumeraireRequired();
+    error DynamicFeeRequired();
 
     event OrderCreated(
         PoolId indexed poolId,
@@ -115,8 +120,8 @@ contract AsyncSwap is IHooks, HookSettlement, Owned2Step, EIP712 {
     event OrderingModeSet(PoolId indexed poolId, AsyncFiller.OrderingMode mode);
     event Swept(Currency indexed currency, address indexed to, uint256 amount);
 
-    constructor(IPoolManager _manager, address _feeVault, address _owner)
-        HookSettlement(_manager, _feeVault)
+    constructor(IPoolManager _manager, address _feeVault, Currency _numeraire, address _owner)
+        HookSettlement(_manager, _feeVault, _numeraire)
         Owned2Step(_owner)
         EIP712("AsyncSwap", "2")
     {
@@ -140,7 +145,7 @@ contract AsyncSwap is IHooks, HookSettlement, Owned2Step, EIP712 {
 
     function getHookPermissions() public pure returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
-            beforeInitialize: false,
+            beforeInitialize: true,
             afterInitialize: false,
             beforeAddLiquidity: false,
             afterAddLiquidity: false,
@@ -155,6 +160,15 @@ contract AsyncSwap is IHooks, HookSettlement, Owned2Step, EIP712 {
             afterAddLiquidityReturnDelta: false,
             afterRemoveLiquidityReturnDelta: false
         });
+    }
+
+    /// @notice Only pools that contain the numeraire can use the hook: the book's sides, its prices and the
+    ///         bids are all denominated in it. The fee must be the dynamic-fee flag, so a pair cannot be split
+    ///         across several fee tiers (each a separate book); the hook sets the LP fee itself.
+    function beforeInitialize(address, PoolKey calldata key, uint160) external view onlyManager returns (bytes4) {
+        if (!(key.currency0 == numeraire || key.currency1 == numeraire)) revert NumeraireRequired();
+        if (key.fee != LPFeeLibrary.DYNAMIC_FEE_FLAG) revert DynamicFeeRequired();
+        return IHooks.beforeInitialize.selector;
     }
 
     /* ───────────────────────────── create (`beforeSwap`) ───────────────────────────── */
@@ -191,7 +205,7 @@ contract AsyncSwap is IHooks, HookSettlement, Owned2Step, EIP712 {
         bytes32 id = _createOrder(state, key, zeroForOne, amountIn, up);
 
         (zeroForOne ? key.currency0 : key.currency1).take(manager, address(this), amountIn, true);
-        if (up.priorityFee != 0) key.currency1.take(manager, address(this), up.priorityFee, true);
+        if (up.priorityFee != 0) numeraire.take(manager, address(this), up.priorityFee, true);
         _tstore(LAST_ORDER_ID_SLOT, id);
     }
 
@@ -210,7 +224,8 @@ contract AsyncSwap is IHooks, HookSettlement, Owned2Step, EIP712 {
             salt = keccak256(abi.encode(salt));
             id = AsyncOrderLibrary.orderId(poolId, up.user, zeroForOne, salt);
         }
-        uint64 sequence = state.addOrder(id, up.user, zeroForOne, amountIn, up.amountOutMin, up.priorityFee);
+        bool buy = (zeroForOne ? key.currency0 : key.currency1) == numeraire;
+        uint64 sequence = state.addOrder(id, up.user, zeroForOne, buy, amountIn, up.amountOutMin, up.priorityFee);
         emit OrderCreated(poolId, id, up.user, zeroForOne, amountIn, up.amountOutMin, up.priorityFee, salt, sequence);
     }
 
@@ -241,7 +256,7 @@ contract AsyncSwap is IHooks, HookSettlement, Owned2Step, EIP712 {
         while (matches < maxMatches) {
             AsyncFiller.OrderInfo storage info = state.orders[id];
             if (info.amountIn == 0) break;
-            bool incomingBuy = AsyncFiller.isBuy(info.zeroForOne);
+            bool incomingBuy = info.buy;
             (bytes32 restingId, uint128 restingKey) = state.bestOrder(!incomingBuy);
             if (restingId == bytes32(0)) break;
             if (incomingBuy ? info.priceKey < restingKey : restingKey < info.priceKey) break;
@@ -380,6 +395,8 @@ contract AsyncSwap is IHooks, HookSettlement, Owned2Step, EIP712 {
         (Currency input, Currency output) =
             o.zeroForOne ? (key.currency0, key.currency1) : (key.currency1, key.currency0);
         input.settle(manager, address(this), o.amountIn, true);
+        // A dynamic-fee pool starts at 0, and this is the only swap that reaches the pool's liquidity.
+        manager.updateDynamicLPFee(key, POOL_LIQUIDITY_FILL_FEE);
         BalanceDelta delta = manager.swap(
             key,
             IPoolManager.SwapParams({
@@ -535,10 +552,6 @@ contract AsyncSwap is IHooks, HookSettlement, Owned2Step, EIP712 {
     }
 
     /* ─────────────────────────────── unused hook entries ─────────────────────────────── */
-
-    function beforeInitialize(address, PoolKey calldata, uint160) external pure returns (bytes4) {
-        revert HookNotImplemented();
-    }
 
     function afterInitialize(address, PoolKey calldata, uint160, int24) external pure returns (bytes4) {
         revert HookNotImplemented();

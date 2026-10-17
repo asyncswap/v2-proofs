@@ -1,0 +1,21 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["dependencies"]
+ffi = true
+fs_permissions = [
+  { access = "read", path = "./broadcast/" },
+  { access = "read-write", path = "./deployments/" },
+]
+solc_version = "0.8.26"
+# Keep linked continuous matching deployable under EIP-170 while retaining more optimization than
+# the minimum-size setting.
+optimizer = true
+optimizer_runs = 1_000
+
+[dependencies]
+forge-std = "1.16.0"
+uniswap-v4-core = "4"
+solmate = "6.8.0"
+
+# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
