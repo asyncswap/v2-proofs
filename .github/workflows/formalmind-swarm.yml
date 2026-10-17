@@ -50,6 +50,13 @@ env:
   CAP_MERGE: "0.40"
   CAP_PROVE: "1.20"
   CAP_CHIEF: "0.40"
+  # Model turns (tool-use steps) a role may take in one run. The dollar caps above usually
+  # end a run first; these are the ceiling for long jobs. Change per role as needed.
+  TURNS_PLAN: "200"
+  TURNS_PROVE: "200"
+  TURNS_REVIEW: "200"
+  TURNS_MERGE: "200"
+  TURNS_CHIEF: "200"
 
 jobs:
   dispatch:
@@ -283,6 +290,11 @@ jobs:
             prove) allowed="$base,Edit,Write,Bash(lake:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git rebase:*),Bash(git merge:*),Bash(git switch:*),Bash(git checkout:*),Bash(git stash:*),Bash(gh pr create:*)" ;;
           esac
           echo "allowed=$allowed" >> "$GITHUB_OUTPUT"
+          case "$ROLE" in
+            plan) turns=$TURNS_PLAN ;; prove) turns=$TURNS_PROVE ;; review) turns=$TURNS_REVIEW ;;
+            merge) turns=$TURNS_MERGE ;; chief) turns=$TURNS_CHIEF ;; *) turns=200 ;;
+          esac
+          echo "turns=$turns" >> "$GITHUB_OUTPUT"
       - uses: anthropics/claude-code-action@v1
         id: bot
         if: ${{ env.ROLE != 'merge' || env.MODE == 'answer' || steps.gate.outputs.clean == 'true' }}
@@ -317,7 +329,7 @@ jobs:
             RUN_URL=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           claude_args: >-
             --allowedTools "${{ steps.tools.outputs.allowed }}"
-            --max-turns 60
+            --max-turns ${{ steps.tools.outputs.turns }}
             --max-budget-usd ${{ env.CAP }}
       - name: Record the cost on the ledger
         if: ${{ always() }}
