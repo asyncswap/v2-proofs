@@ -579,7 +579,7 @@ These are the proposed names from
 
 ### Official vs the v2 draft
 
-The interface, events and behaviour match v2's, except for the two improvements in decision 9
+The interface and events match v2's. The differences are the two improvements in decision 9 and one bug fix
 ([STATE_MACHINE §5](STATE_MACHINE.md#5-official-vs-v2-draft-and-vs-the-proofs-only-rebuild)):
 
 1. **The bid is escrowed at create.**
@@ -592,6 +592,11 @@ The interface, events and behaviour match v2's, except for the two improvements 
    - `0`, or a 4-word `hookData`, keeps v2's derivation.
    - `T.swapWithSig` always derives the salt.
    - `UserParams` is unchanged, so v2's tests still compile and pass.
+
+3. **A bug fix.** After a FIFO reprice, v2 left the order's stale `next` pointer, which later corrupted the
+   price-level lists (a cancelled order as best, a crossed book that could not be matched, new orders at that
+   price reverting). `AsyncFiller._append` now clears it. Found by the proof-derived invariant tests; see
+   [STATE_MACHINE §5](STATE_MACHINE.md#5-official-vs-v2-draft-and-vs-the-proofs-only-rebuild).
 
 ### Official vs the proofs-only rebuild
 

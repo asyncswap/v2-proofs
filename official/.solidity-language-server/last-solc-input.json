@@ -1,0 +1,42 @@
+{
+  "language": "Solidity",
+  "settings": {
+    "outputSelection": {
+      "*": {
+        "": [
+          "ast"
+        ],
+        "*": [
+          "devdoc",
+          "userdoc",
+          "evm.methodIdentifiers",
+          "storageLayout",
+          "transientStorageLayout"
+        ]
+      }
+    },
+    "remappings": [
+      "@async-swap/=src/",
+      "@openzeppelin/contracts/=dependencies/v4-core/lib/openzeppelin-contracts/contracts/",
+      "@uniswap/v4-core/=dependencies/v4-core/",
+      "forge-std-1.16.0/=dependencies/forge-std-1.16.0/",
+      "forge-std/=dependencies/forge-std/src/",
+      "solmate-6.8.0/=dependencies/solmate-6.8.0/",
+      "uniswap-v4-core-4/=dependencies/uniswap-v4-core-4/",
+      "v4-core/=dependencies/v4-core/src/",
+      "@ensdomains/=dependencies/v4-core/node_modules/@ensdomains/",
+      "ds-test/=dependencies/v4-core/lib/forge-std/lib/ds-test/src/",
+      "erc4626-tests/=dependencies/v4-core/lib/openzeppelin-contracts/lib/erc4626-tests/",
+      "hardhat/=dependencies/v4-core/node_modules/hardhat/",
+      "openzeppelin-contracts/=dependencies/v4-core/lib/openzeppelin-contracts/",
+      "solmate/=dependencies/v4-core/lib/solmate/"
+    ]
+  },
+  "sources": {
+    "test/proofs/Invariants.t.sol": {
+      "urls": [
+        "test/proofs/Invariants.t.sol"
+      ]
+    }
+  }
+}

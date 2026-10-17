@@ -505,8 +505,8 @@ These are proposed names, so the other documents can refer to them.
 
 ### Official (`official/src`) vs the v2 draft (`asyncswap/v2` `src/`)
 
-The external interface, events and behaviour are otherwise identical. The only differences are the two
-accepted improvements (decision 9):
+The external interface and events are identical. The differences are the two accepted improvements
+(decision 9) and one bug fix found by the proof-derived tests:
 
 1. **Bid escrowed in the create unlock.**
    - `AsyncSwap._beforeSwap` calls `numeraire.take(poolManager, hook, priorityFee, true)` right after `_createOrder`.
@@ -521,6 +521,15 @@ accepted improvements (decision 9):
    - `_createOrder(…, makerSalt)` uses it when it is non-zero, else v2's block-data salt, then walks `salt = keccak(salt)` past open ids.
    - `UserParams` is unchanged, with four fields.
    - Tests: `test_makerSalt_idKnownBeforeSending`, `test_zeroSalt_keepsDerivedSalt`, `test_reusedMakerSalt_walksToAFreeId`.
+
+3. **Bug fix: stale `next` after a FIFO reprice.**
+   - `AsyncFiller._append` now sets `order.next = 0`. In v2 it set only `previous`, so an order re-appended by
+     `T.updatePrice` (or by a partial fill that moved its price) kept the `next` of its old level.
+   - Its next `_remove` then rewired the wrong level: a level's head could become a closed order or one of another
+     price, `bestOrder` named a cancelled order, a crossed book could not be matched, and a new order at that exact
+     price reverted (`_crosses` divided by the dead head's zero `amountOutMin`). Escrow was never at risk.
+   - Found by the proof-derived invariant `PriceIndex.best_spec` (FIFO list integrity) in `test/proofs/Invariants.t.sol`;
+     regression `test_reprice_reentersLast_keepsLevelListsWellFormed`. PriorityFee pools were not affected.
 
 ### Official vs the proofs-only rebuild (`rebuild/`)
 

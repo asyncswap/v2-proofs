@@ -362,7 +362,11 @@ library AsyncFiller {
             priceLevel.priorityOrders.insert(order.priorityKey);
             priceLevel.priorityOrderIds[order.priorityKey] = id;
         } else {
+            // A re-appended order (reprice, or a partial fill that moved its price) still carries the
+            // `next` of its old level; it joins as the tail, so it has no successor. Leaving the stale
+            // pointer corrupted both levels' lists on the order's next `_remove`.
             order.previous = priceLevel.tail;
+            order.next = bytes32(0);
             if (priceLevel.tail == bytes32(0)) priceLevel.head = id;
             else self.orders[priceLevel.tail].next = id;
             priceLevel.tail = id;

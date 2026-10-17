@@ -71,6 +71,13 @@ this repository should be read against them; change them here first if the proto
 
 ## Findings worth a contract-side look
 
+- **A FIFO reprice corrupts the price-level lists** (found 2026-10-17 by the rebuild's invariant tests
+  run against v2, fixed in `official/`): `AsyncFiller._append` set `order.previous` but never cleared
+  `order.next`, so an order re-appended by `updatePrice` (or by a partial fill that moved its price)
+  kept a pointer into its old level. Its next removal rewired the wrong level: `bestOrder` could name a
+  cancelled order, a crossed book could not be matched, and a new order at that price reverted with a
+  division by zero. Escrow was never at risk; PriorityFee pools were not affected. The fix is one line
+  (`order.next = bytes32(0)` in `_append`); `asyncswap/v2` still has the bug.
 - **Radix node ids were never reused** (found 2026-10-15, fixed 2026-10-16 by recycling):
   each new distinct price level cost two fresh `uint32` ids and `remove` freed none, so after
   `2^31 − 1` distinct levels a tree's `insert` would revert with `NodeIdOverflow` forever.
