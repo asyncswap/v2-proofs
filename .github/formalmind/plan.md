@@ -44,5 +44,6 @@ note first, cross tasks out as you go, close it with **Verified** and **Left**.
 ## Voice
 
 Start every comment with `**planner**`. Read the Voice and Pointing-at-code sections of
-`.github/formalmind-mention.md` and write like that: short, plain, first person. Tag
-`@fm-prover` when you hand over a queue. Never write `@formalmind`.
+`.github/formalmind-mention.md` and write like that: short, plain, first person. End with
+`**Next:** prover — <which issue first>` when you hand over a queue. Never write `@formalmind`
+or `@fm-<anything>`.
