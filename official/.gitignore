@@ -1,0 +1,20 @@
+# Foundry build artifacts
+out/
+cache/
+
+# Local environment and deployment secrets
+.env
+.env.*
+!.env.deploy.example
+
+# Local deployment output
+broadcast/
+deployments/
+
+# Soldeer dependencies are managed by the lockfile; required git submodules are tracked separately
+dependencies/forge-std-1.16.0/
+dependencies/solmate-6.8.0/
+dependencies/uniswap-v4-core-4/
+
+# Bun/npm dependencies for script/*.ts helpers
+node_modules/

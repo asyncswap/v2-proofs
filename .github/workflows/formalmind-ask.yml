@@ -36,8 +36,8 @@ jobs:
         run: |
           # "/ask <role>" at the start of a line, optionally after the speaker's **role** prefix.
           roles=$(printf '%s\n' "$BODY" \
-            | grep -oiE '^[[:space:]]*(\*\*[a-z]+\*\*[[:space:]]+)?/ask[[:space:]]+(planner|prover|rebuilder|editor|reviewer|merger|chief|assistant)\b|@fm-(planner|prover|rebuilder|editor|reviewer|merger|chief|assistant)\b' \
-            | grep -oiE '(planner|prover|rebuilder|editor|reviewer|merger|chief|assistant)$' | tr 'A-Z' 'a-z' | sort -u || true)
+            | grep -oiE '^[[:space:]]*(\*\*[a-z]+\*\*[[:space:]]+)?/ask[[:space:]]+(planner|prover|rebuilder|consolidator|editor|reviewer|merger|chief|assistant)\b|@fm-(planner|prover|rebuilder|consolidator|editor|reviewer|merger|chief|assistant)\b' \
+            | grep -oiE '(planner|prover|rebuilder|consolidator|editor|reviewer|merger|chief|assistant)$' | tr 'A-Z' 'a-z' | sort -u || true)
           [ "$NUMBER" = 69 ] && [ "$AUTHOR" = mmsaki ] && roles=$(printf '%s\nassistant\n' "$roles" | grep . | sort -u)
           [ -n "$roles" ] || { echo "no /ask for a role here"; exit 0; }
           for role in $roles; do
