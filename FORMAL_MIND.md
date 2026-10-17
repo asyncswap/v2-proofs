@@ -6,6 +6,37 @@ could not be proved, and what the build said. Humans may add entries too; keep t
 
 <!-- formal-mind: insert new entries directly below this line -->
 
+## 2026-10-17 — asyncswap/v2-proofs issue #60 — spec: wallet balances outside the PoolManager stay non-negative across every v2 entry point
+
+**Trigger:** swarm issue #60.
+
+**Contract change.** None.
+
+**Spec impact.** New `AsyncSwapProtocol/V2/BalNonNeg.lean`, imported from the `AsyncSwapProtocol`
+root. `Model.lean`, `Invariants.lean` and `ClaimsNonNeg.lean` untouched. The issue suggested a
+`Grows`-style relation. Wallet balances can go down, though, so the module uses per-op
+preservation lemmas whose debit steps take a balance hypothesis instead.
+
+**Theorems added.** `BalNonNeg` (`∀ c a, a ≠ cfg.pm → 0 ≤ w.bal c a`); `BalNonNeg.of_bal_eq`;
+one preservation lemma per ledger op (`BalNonNeg.transfer` and `BalNonNeg.settle`, which take
+`n ≤ bal c payer`; `take`, `payOut`, `mint`, `burn`, `poolSwap`, `setOrder`, `deleteOrder`,
+`setPendingNative`); one per hook and entry body (`payOutBody`, `settleBidBody`,
+`reduceSideBody`, `matchLoop`, `createBody`, `priorityFeeBody`, `liquidityFillBody`,
+`cancelBody`, `fillBody`); `bal_createBody`; `step_bal_nonneg` (every v2 entry point preserves
+`BalNonNeg`, under the same environment hypotheses as `step_escrow`, except the gap below).
+
+**Theorems changed or weakened.** None.
+
+**Unproven gaps.** A buy-side `swap` (`o.input = numeraire`) with a non-zero `priorityFee`
+debits the owner's numeraire twice, `amountIn` in `createBody` and then `priorityFee` in
+`priorityFeeBody`. `swapGuard` checks each one against the starting balance on its own
+(`Model.lean:341-343`) and never checks their sum, so in the model that swap can drive the owner
+negative. `step_bal_nonneg` leaves out exactly that case through the hypothesis
+`hgap : a = .swap s o v up ms → o.input = numeraire → o.priorityFee = 0`. It makes no assumption
+about balances. Every other debit is guarded.
+
+**Build.** `lake build` clean, no `sorry`, no new axioms.
+
 ## 2026-10-16 — asyncswap/v2-proofs issue #52 — spec: user claim balances stay non-negative across every v2 entry point
 
 **Trigger:** swarm issue #52.
