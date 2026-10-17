@@ -5,8 +5,12 @@ name: formalmind swarm
 # labels are the state machine, pull requests are the deliverables, and issue #38 (the
 # ledger) is the spend log and the planner's digest channel. See .github/formalmind/README.md.
 #
-# Every 30 minutes (or as soon as an `fm:` label changes) the dispatcher picks at most one
-# model job, in this order: answer an /ask (the assistant's first), merge an approved PR,
+# One swarm, several projects: this repository is the swarm's home, and
+# .github/formalmind/projects.json lists every proofs repository it works in. One budget and
+# one ledger cover all of them; each project keeps its own fm: labels, issues and PRs.
+#
+# Every 30 minutes (or as soon as an `fm:` label changes here) the dispatcher looks across every
+# project and picks at most one model job (the oldest item wins within a step), in this order: answer an /ask (the assistant's first), merge an approved PR,
 # review a PR, revise a bounced PR, resume or start an issue (proof or rebuild), advance the
 # rebuild cycle (the editor) when something moved, or plan when the queue is empty. Nothing runs when the day's or
 # month's budget is spent; the chief and the assistant only have to fit the month.
@@ -23,6 +27,10 @@ on:
         default: ""
       number:
         description: "issue number (prove, rebuild, consolidate, assistant) or PR number (prove, rebuild, consolidate, review, merge); blank for plan, editor, chief"
+        required: false
+        default: ""
+      repo:
+        description: "the proofs repository the forced job is in (owner/name); blank for this one"
         required: false
         default: ""
   issues:
@@ -79,6 +87,8 @@ jobs:
     env:
       FORMALMIND_APP_ID: ${{ secrets.FORMALMIND_APP_ID }}
     outputs:
+      repo: ${{ steps.pick.outputs.repo }}
+      protocol: ${{ steps.pick.outputs.protocol }}
       role: ${{ steps.pick.outputs.role }}
       mode: ${{ steps.pick.outputs.mode }}
       number: ${{ steps.pick.outputs.number }}
@@ -95,15 +105,25 @@ jobs:
         with:
           app-id: ${{ secrets.FORMALMIND_APP_ID }}
           private-key: ${{ secrets.FORMALMIND_APP_PRIVATE_KEY }}
+          # Every repository the App is installed on here, so one token reaches every project.
+          owner: ${{ github.repository_owner }}
       - name: Budget, then pick one job
         id: pick
         env:
           GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
           FORCE_ROLE: ${{ inputs.role }}
           FORCE_NUMBER: ${{ inputs.number }}
+          FORCE_REPO: ${{ inputs.repo }}
           SCHEDULE: ${{ github.event.schedule }}
         run: |
-          R="$GITHUB_REPOSITORY"
+          HOME_R="$GITHUB_REPOSITORY"
+          # Every proofs repository the swarm works in; this one alone until projects.json lists any.
+          projects=$(content=$(gh api "repos/$HOME_R/contents/.github/formalmind/projects.json" --jq .content 2>/dev/null) && echo "$content" | base64 -d 2>/dev/null || true)
+          REPOS=$(echo "$projects" | jq -r '.projects[].repo' 2>/dev/null || true)
+          [ -z "$REPOS" ] && REPOS="$HOME_R"
+          echo "projects: $(echo $REPOS)"
+          # R is the repository of the job being considered; every step below sets it when it picks.
+          R="$HOME_R"
           # The daily crons are the reporters'; they only have to fit the month's budget.
           [ "$SCHEDULE" = "40 23 * * *" ] && FORCE_ROLE=chief
           [ "$SCHEDULE" = "50 23 * * *" ] && FORCE_ROLE=assistant
@@ -111,14 +131,21 @@ jobs:
           gh api --paginate "repos/$R/issues/$LEDGER_ISSUE/comments?since=${month}-01T00:00:00Z&per_page=100" \
             --jq '.[] | "\(.created_at) \(.body | gsub("\n"; " "))"' > ledger.txt || true
           sum() { grep -o 'usd=[0-9.]*' | awk -F= '{ s += $2 } END { printf "%.2f", s }'; }
+          # The ledger lines about one repository: those naming it with repo=, and for the home also
+          # the older lines that name none.
+          of_repo() { awk -v r="$1" -v h="$HOME_R" '{ if (match($0, / repo=[^ ]+/)) { if (substr($0, RSTART + 6, RLENGTH - 6) == r) print } else if (r == h) print }' ledger.txt; }
+          # The oldest open item with a label across every project, as "<repo> <number>".
+          oldest() { # <pr|issue> <label>
+            for r in $REPOS; do
+              gh "$1" list -R "$r" --state open --label "$2" --json number,createdAt --jq ".[] | \"\(.createdAt) $r \(.number)\"" 2>/dev/null || true
+            done | sort | head -1 | cut -d' ' -f2-
+          }
           spent_month=$(sum < ledger.txt)
           spent_today=$(grep "^$today" ledger.txt | sum)
           remaining=$(awk -v d="$DAILY_USD" -v m="$MONTHLY_USD" -v t="$spent_today" -v mo="$spent_month" \
             'BEGIN { a = d - t; b = m - mo; printf "%.2f", (a < b ? a : b) }')
           echo "spent today \$$spent_today, this month \$$spent_month, remaining \$$remaining"
           affordable() { awk -v c="$1" -v r="$remaining" 'BEGIN { exit !(c <= r) }'; }
-          oldest_pr() { gh pr list -R "$R" --state open --label "$1" --json number,createdAt --jq 'sort_by(.createdAt) | .[0].number // empty'; }
-          oldest_issue() { gh issue list -R "$R" --state open --label "$1" --json number,createdAt --jq 'sort_by(.createdAt) | .[0].number // empty'; }
 
           role=""; number=""; kind=""; cap=0; mode=work; since=""
           cap_of() { case "$1" in plan) echo "$CAP_PLAN" ;; prove) echo "$CAP_PROVE" ;; rebuild) echo "$CAP_REBUILD" ;; editor) echo "$CAP_EDITOR" ;; consolidate) echo "$CAP_CONSOLIDATE" ;; review) echo "$CAP_REVIEW" ;; merge) echo "$CAP_MERGE" ;; chief) echo "$CAP_CHIEF" ;; assistant) echo "$CAP_ASSISTANT" ;; esac; }
@@ -129,7 +156,7 @@ jobs:
           # The dev commit the editor last compared, from its ledger marker (this month's ledger only).
           edit_since() { grep -o 'fm-edit synced=[0-9a-f]*' ledger.txt | tail -1 | cut -d= -f2; }
           if [ -n "$FORCE_ROLE" ]; then
-            role="$FORCE_ROLE"; number="$FORCE_NUMBER"
+            role="$FORCE_ROLE"; number="$FORCE_NUMBER"; R="${FORCE_REPO:-$HOME_R}"
             case "$role" in
               plan) cap=$CAP_PLAN; kind=none ;;
               chief) cap=$CAP_CHIEF; kind=none ;;
@@ -151,8 +178,11 @@ jobs:
             #    and the maintainer's assistant before everyone else.
             for asked in assistant merger reviewer prover rebuilder consolidator editor planner chief; do
               [ -n "$role" ] && break
-              for n in $(gh api "repos/$R/issues?labels=fm:ask-$asked&state=open&sort=created&direction=asc&per_page=20" --jq '.[].number'); do
-                answers=$(grep "^$today" ledger.txt | grep "ref=#$n " | grep -c "mode=answer" || true)
+              for r in $REPOS; do
+              [ -n "$role" ] && break
+              for n in $(gh api "repos/$r/issues?labels=fm:ask-$asked&state=open&sort=created&direction=asc&per_page=20" --jq '.[].number' 2>/dev/null | grep -E '^[0-9]+$'); do
+                R=$r
+                answers=$(of_repo "$R" | grep "^$today" | grep "ref=#$n " | grep -c "mode=answer" || true)
                 # The assistant is where parked items go, so it is never parked itself.
                 if [ "$asked" != assistant ] && [ "$answers" -ge 3 ]; then
                   park "$n" "this item has had three answers today and still has an open question for the $asked, so I'm parking it rather than letting the roles talk in circles." "--remove-label fm:ask-$asked"
@@ -166,18 +196,19 @@ jobs:
                 else kind=none; fi
                 break
               done
+              done
             done
             # 1. merge: a PR the reviewer approved
-            [ -z "$role" ] && { n=$(oldest_pr fm:approved); [ -n "$n" ] && { role=merge; number=$n; kind=pr; cap=$CAP_MERGE; }; }
+            [ -z "$role" ] && { set -- $(oldest pr fm:approved); [ -n "${2:-}" ] && { R=$1; role=merge; number=$2; kind=pr; cap=$CAP_MERGE; }; }
             # 2. review: a PR waiting for the reviewer
-            [ -z "$role" ] && { n=$(oldest_pr fm:review); [ -n "$n" ] && { role=review; number=$n; kind=pr; cap=$CAP_REVIEW; }; }
+            [ -z "$role" ] && { set -- $(oldest pr fm:review); [ -n "${2:-}" ] && { R=$1; role=review; number=$2; kind=pr; cap=$CAP_REVIEW; }; }
             # 3. revise: a PR the reviewer or merger bounced, or one that conflicts with dev
             #    The rebuilder's PRs (branches fm/rebuild-<n>) go back to the rebuilder.
             if [ -z "$role" ]; then
-              n=$(oldest_pr fm:changes); [ -z "$n" ] && n=$(oldest_pr fm:needs-rebase)
-              if [ -n "$n" ]; then
-                number=$n; kind=pr
-                case "$(gh pr view -R "$R" "$n" --json headRefName --jq .headRefName)" in
+              set -- $(oldest pr fm:changes); [ -z "${2:-}" ] && set -- $(oldest pr fm:needs-rebase)
+              if [ -n "${2:-}" ]; then
+                R=$1; number=$2; kind=pr
+                case "$(gh pr view -R "$R" "$number" --json headRefName --jq .headRefName)" in
                   fm/rebuild-*) role=rebuild; cap=$CAP_REBUILD ;;
                   fm/consolidate-*) role=consolidate; cap=$CAP_CONSOLIDATE ;;
                   *) role=prove; cap=$CAP_PROVE ;;
@@ -186,9 +217,11 @@ jobs:
             fi
             # 4. resume: an in-progress issue whose branch has no open PR (a run was cut off)
             resume() { # <label> <branch prefix> <role>
-              for i in $(gh issue list -R "$R" --state open --label "$1" --json number,createdAt --jq 'sort_by(.createdAt) | .[].number'); do
-                if [ -z "$(gh pr list -R "$R" --state open --head "$2-$i" --json number --jq '.[0].number // empty')" ]; then
-                  tries=$(grep "^$today" ledger.txt | grep -c "role=$3 ref=#$i " || true)
+              for r in $REPOS; do
+              for i in $(gh issue list -R "$r" --state open --label "$1" --json number,createdAt --jq 'sort_by(.createdAt) | .[].number' 2>/dev/null); do
+                if [ -z "$(gh pr list -R "$r" --state open --head "$2-$i" --json number --jq '.[0].number // empty')" ]; then
+                  R=$r
+                  tries=$(of_repo "$R" | grep "^$today" | grep -c "role=$3 ref=#$i " || true)
                   if [ "$tries" -ge 2 ]; then
                     park "$i" "two $3 runs today ended without a pull request, so I'm parking this one; the branch \`$2-$i\` has whatever was pushed." "--remove-label $1"
                     continue
@@ -196,50 +229,58 @@ jobs:
                   role=$3; number=$i; kind=issue; cap=$(cap_of "$3"); return
                 fi
               done
+              done
             }
             [ -z "$role" ] && resume fm:in-progress fm/issue prove
             [ -z "$role" ] && resume fm:rebuilding fm/rebuild rebuild
             [ -z "$role" ] && resume fm:consolidating fm/consolidate consolidate
-            # 5. new work: the oldest queued issue, a proof (fm:todo) or a rebuild (fm:rebuild)
+            # 5. new work: the oldest queued issue in any project, a proof (fm:todo) or a rebuild (fm:rebuild)
             if [ -z "$role" ]; then
-              set -- $( { gh issue list -R "$R" --state open --label fm:todo --json number,createdAt --jq '.[] | "\(.createdAt) \(.number) prove"'
-                          gh issue list -R "$R" --state open --label fm:rebuild --json number,createdAt --jq '.[] | "\(.createdAt) \(.number) rebuild"'
-                          gh issue list -R "$R" --state open --label fm:consolidate --json number,createdAt --jq '.[] | "\(.createdAt) \(.number) consolidate"'; } | sort | head -1 )
-              [ -n "${2:-}" ] && { role=$3; number=$2; kind=issue; cap=$(cap_of "$3"); }
+              set -- $( for r in $REPOS; do
+                          gh issue list -R "$r" --state open --label fm:todo --json number,createdAt --jq ".[] | \"\(.createdAt) $r \(.number) prove\"" 2>/dev/null
+                          gh issue list -R "$r" --state open --label fm:rebuild --json number,createdAt --jq ".[] | \"\(.createdAt) $r \(.number) rebuild\"" 2>/dev/null
+                          gh issue list -R "$r" --state open --label fm:consolidate --json number,createdAt --jq ".[] | \"\(.createdAt) $r \(.number) consolidate\"" 2>/dev/null
+                        done | sort | head -1 )
+              [ -n "${3:-}" ] && { R=$2; role=$4; number=$3; kind=issue; cap=$(cap_of "$4"); }
             fi
             # 5b. editor: the rebuild cycle moves on when the spec, the rebuild, the draft (via its
             #     reconcile entries in FORMAL_MIND.md) or an fm:intent changed since the editor
-            #     last looked, at most once every EDITOR_EVERY.
+            #     last looked, at most once every EDITOR_EVERY. The cycle is this home's only.
             if [ -z "$role" ]; then
               since=$(edit_since)
               last=$(grep 'fm-edit synced' ledger.txt | tail -1); when=${last%% *}
               age=$(( $(date -u +%s) - $(date -u -d "${when:-1970-01-01T00:00:00Z}" +%s) ))
               moved=1
               if [ -n "$since" ]; then
-                head=$(gh api "repos/$R/commits/dev" --jq .sha)
-                moved=$(gh api "repos/$R/compare/$since...$head" --jq '[.files[].filename | select(startswith("AsyncSwap") or startswith("RebuildSpec") or startswith("rebuild/") or . == "README.md" or . == "FORMAL_MIND.md")] | length' || echo 1)
-                [ "$moved" = 0 ] && moved=$(gh issue list -R "$R" --state all --label fm:intent --search "updated:>$when" --json number --jq length || echo 0)
+                head=$(gh api "repos/$HOME_R/commits/dev" --jq .sha)
+                moved=$(gh api "repos/$HOME_R/compare/$since...$head" --jq '[.files[].filename | select(startswith("AsyncSwap") or startswith("RebuildSpec") or startswith("rebuild/") or . == "README.md" or . == "FORMAL_MIND.md")] | length' || echo 1)
+                [ "$moved" = 0 ] && moved=$(gh issue list -R "$HOME_R" --state all --label fm:intent --search "updated:>$when" --json number --jq length || echo 0)
               fi
               if [ "$moved" != 0 ] && [ "$age" -ge "$EDITOR_EVERY" ]; then
-                role=editor; kind=none; cap=$CAP_EDITOR
+                R=$HOME_R; role=editor; kind=none; cap=$CAP_EDITOR
               else
                 since=""
               fi
             fi
-            # 6. plan when the queue is empty, unless the last plan said idle less than a day ago
+            # 6. plan when the queue is empty: the first project whose last plan did not say idle
+            #    less than a day ago
             if [ -z "$role" ]; then
-              # ledger.txt lines start with the comment's created_at, which is the trustworthy clock
-              last=$(grep 'fm-plan' ledger.txt | tail -1)
-              when=${last%% *}; state=$(echo "$last" | grep -o 'fm-plan [a-z]*' | awk '{ print $2 }')
-              age=$(( $(date -u +%s) - $(date -u -d "${when:-1970-01-01T00:00:00Z}" +%s) ))
-              if [ "$state" = idle ] && [ "$age" -lt 86400 ]; then
-                echo "planner said idle ${age}s ago; nothing to do"
-              else
-                role=plan; kind=none; cap=$CAP_PLAN
-              fi
+              for r in $REPOS; do
+                # ledger.txt lines start with the comment's created_at, which is the trustworthy clock
+                last=$(of_repo "$r" | grep 'fm-plan' | tail -1)
+                when=${last%% *}; state=$(echo "$last" | grep -o 'fm-plan [a-z]*' | awk '{ print $2 }')
+                age=$(( $(date -u +%s) - $(date -u -d "${when:-1970-01-01T00:00:00Z}" +%s) ))
+                if [ "$state" = idle ] && [ "$age" -lt 86400 ]; then
+                  echo "planner said idle on $r ${age}s ago"
+                else
+                  R=$r; role=plan; kind=none; cap=$CAP_PLAN; break
+                fi
+              done
             fi
           fi
 
+          # The chief and the evening update are the whole swarm's, so they run in the home.
+          if [ "$role" = chief ] || { [ "$role" = assistant ] && [ "$mode" = digest ]; }; then R=$HOME_R; fi
           # The chief and the assistant (who talks to the maintainer) only have to fit the month.
           if [ "$role" = chief ] || [ "$role" = assistant ]; then
             remaining=$(awk -v m="$MONTHLY_USD" -v mo="$spent_month" 'BEGIN { printf "%.2f", m - mo }')
@@ -250,7 +291,7 @@ jobs:
             role=""
           fi
           rounds=0
-          [ -n "$number" ] && rounds=$(grep -c "ref=#$number " ledger.txt || true)
+          [ -n "$number" ] && rounds=$(of_repo "$R" | grep -c "ref=#$number " || true)
           if [ "$role" = prove ] && [ "$kind" = issue ] && [ "$mode" = work ]; then
             gh issue edit -R "$R" "$number" --remove-label fm:todo --add-label fm:in-progress 2>/dev/null || true
           fi
@@ -260,9 +301,12 @@ jobs:
           if [ "$role" = consolidate ] && [ "$kind" = issue ] && [ "$mode" = work ]; then
             gh issue edit -R "$R" "$number" --remove-label fm:consolidate --add-label fm:consolidating 2>/dev/null || true
           fi
-          echo "picked: ${role:-nothing} ${mode} ${kind:-} ${number:-} (cap \$$cap, rounds $rounds${since:+, since $since})"
+          # The protocol the project models, for the roles that read it; the home's is asyncswap/v2.
+          protocol=$(echo "$projects" | jq -r --arg r "$R" '.projects[] | select(.repo == $r) | .protocol // empty' 2>/dev/null || true)
+          [ -z "$protocol" ] && [ "$R" = "$HOME_R" ] && protocol=asyncswap/v2
+          echo "picked: ${role:-nothing} ${mode} ${kind:-} ${R}${number:+#$number} (cap \$$cap, rounds $rounds${since:+, since $since})"
           {
-            echo "role=$role"; echo "mode=$mode"; echo "number=$number"; echo "kind=$kind"; echo "cap=$cap"
+            echo "repo=$R"; echo "protocol=$protocol"; echo "role=$role"; echo "mode=$mode"; echo "number=$number"; echo "kind=$kind"; echo "cap=$cap"
             echo "rounds=$rounds"; echo "remaining=$remaining"; echo "since=$since"
           } >> "$GITHUB_OUTPUT"
 
@@ -278,10 +322,10 @@ jobs:
       NUMBER: ${{ needs.dispatch.outputs.number }}
       KIND: ${{ needs.dispatch.outputs.kind }}
       CAP: ${{ needs.dispatch.outputs.cap }}
+      # The project's proofs repository; the role docs and swarm-wide issues stay in this home.
+      PROJECT: ${{ needs.dispatch.outputs.repo }}
+      DOCS: ${{ needs.dispatch.outputs.repo == github.repository && '.github/formalmind' || 'swarm-home/.github/formalmind' }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - name: formalmind App token
         id: app
         if: ${{ env.FORMALMIND_APP_ID != '' }}
@@ -289,6 +333,23 @@ jobs:
         with:
           app-id: ${{ secrets.FORMALMIND_APP_ID }}
           private-key: ${{ secrets.FORMALMIND_APP_PRIVATE_KEY }}
+          # Every repository the App is installed on here, so one token reaches every project.
+          owner: ${{ github.repository_owner }}
+      # Another project is checked out with the App token; this home keeps the workflow's own.
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.dispatch.outputs.repo }}
+          token: ${{ needs.dispatch.outputs.repo != github.repository && steps.app.outputs.token || github.token }}
+          fetch-depth: 0
+      - name: The swarm's role docs, for a job in another project (read-only, under swarm-home/)
+        if: ${{ needs.dispatch.outputs.repo != github.repository }}
+        uses: actions/checkout@v4
+        with:
+          path: swarm-home
+          sparse-checkout: .github/formalmind
+      - name: Keep swarm-home out of the project's commits
+        if: ${{ needs.dispatch.outputs.repo != github.repository }}
+        run: echo swarm-home >> .git/info/exclude
       - name: Check out the branch for this job
         id: ctx
         env:
@@ -312,19 +373,19 @@ jobs:
           } >> "$GITHUB_OUTPUT"
       # The rebuilder never sees the draft: its rebuild must come from the proofs alone.
       - name: Check out the protocol the spec models (read-only, under protocol/)
-        if: ${{ env.ROLE != 'plan' && env.ROLE != 'rebuild' }}
+        if: ${{ env.ROLE != 'plan' && env.ROLE != 'rebuild' && needs.dispatch.outputs.protocol != '' }}
         uses: actions/checkout@v4
         with:
-          repository: asyncswap/v2
+          repository: ${{ needs.dispatch.outputs.protocol }}
           path: protocol
           token: ${{ secrets.PROTOCOL_READ_TOKEN || github.token }}
       - name: Install elan
-        if: ${{ env.ROLE == 'prove' || env.ROLE == 'merge' }}
+        if: ${{ (env.ROLE == 'prove' || env.ROLE == 'merge') && hashFiles('lean-toolchain') != '' }}
         run: |
           curl -sSfL https://elan.lean-lang.org/elan-init.sh | sh -s -- -y --default-toolchain none
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
       - uses: actions/cache@v4
-        if: ${{ env.ROLE == 'prove' || env.ROLE == 'merge' }}
+        if: ${{ (env.ROLE == 'prove' || env.ROLE == 'merge') && hashFiles('lean-toolchain') != '' }}
         with:
           path: |
             .lake
@@ -332,11 +393,13 @@ jobs:
           key: lake-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lake-manifest.json') }}
           restore-keys: lake-${{ runner.os }}-
       - run: lake exe cache get
-        if: ${{ env.ROLE == 'prove' || env.ROLE == 'merge' }}
+        if: ${{ (env.ROLE == 'prove' || env.ROLE == 'merge') && hashFiles('lean-toolchain') != '' }}
       - name: Foundry and the rebuild's libraries
         if: ${{ env.ROLE == 'rebuild' || env.ROLE == 'consolidate' || env.ROLE == 'merge' }}
         uses: foundry-rs/foundry-toolchain@v1
-      - run: git submodule update --init --recursive rebuild/lib official/dependencies
+      - run: |
+          paths=$(ls -d rebuild/lib official/dependencies 2>/dev/null || true)
+          [ -z "$paths" ] || git submodule update --init --recursive $paths
         if: ${{ env.ROLE == 'rebuild' || env.ROLE == 'consolidate' || env.ROLE == 'merge' }}
       - name: Gate on a clean build before the merger looks
         id: gate
@@ -357,12 +420,16 @@ jobs:
           forge_ok=true
           : > build.log
           for root in rebuild official; do
-            if [ -n "$(git diff --name-only origin/dev HEAD -- "$root" .gitmodules)" ]; then
+            if [ -d "$root" ] && [ -n "$(git diff --name-only origin/dev HEAD -- "$root" .gitmodules)" ]; then
               git submodule update --init --recursive rebuild/lib official/dependencies
               (forge build --sizes --root "$root" && forge test --root "$root") >> build.log 2>&1 || forge_ok=false
             fi
           done
-          if $forge_ok && lake build 2>&1 | tee -a build.log && ! grep -rn --include='*.lean' -E '\bsorry\b' AsyncSwapSpec AsyncSwapProtocol $(ls -d RebuildSpec 2>/dev/null); then
+          # This home's spec folders; another project's every tracked Lean file.
+          lean=$(ls -d AsyncSwapSpec AsyncSwapProtocol RebuildSpec 2>/dev/null || true)
+          [ -z "$lean" ] && lean=$(git ls-files '*.lean')
+          lean_ok() { [ ! -f lean-toolchain ] || lake build 2>&1 | tee -a build.log; }
+          if $forge_ok && lean_ok && ! { [ -n "$lean" ] && grep -rn --include='*.lean' -E '\bsorry\b' $lean; }; then
             echo "clean=true" >> "$GITHUB_OUTPUT"
           else
             echo "clean=false" >> "$GITHUB_OUTPUT"
@@ -408,17 +475,18 @@ jobs:
           include_fix_links: "false"
           prompt: |
             You are the ${{ env.ROLE }} of the formalmind swarm and it is your turn. Read
-            .github/formalmind/README.md, then .github/formalmind/${{ env.ROLE == 'assistant' && 'assistant' || (env.MODE == 'answer' && 'answer' || env.ROLE) }}.md,
-            and follow them.
+            ${{ env.DOCS }}/README.md, then ${{ env.DOCS }}/${{ env.ROLE == 'assistant' && 'assistant' || (env.MODE == 'answer' && 'answer' || env.ROLE) }}.md,
+            and follow them. (Where they say .github/formalmind/, read ${{ env.DOCS }}/.)
 
             ROLE=${{ env.ROLE }}
             MODE=${{ env.MODE }}  (answer: someone asked you a question on NUMBER; work: your usual job; digest: the assistant's evening update)
-            REPO=${{ github.repository }}
+            REPO=${{ needs.dispatch.outputs.repo }}  (the project this job is in: its issues, PRs, labels and this checkout)
+            SWARM_REPO=${{ github.repository }}  (the swarm's home: the ledger, notebook, chief and assistant issues)
             KIND=${{ env.KIND }}
             NUMBER=${{ env.NUMBER }}
             BRANCH=${{ steps.ctx.outputs.branch }}
             SHA=${{ steps.ctx.outputs.sha }}
-            PROTOCOL_DIR=protocol  (the Solidity of asyncswap/v2, read-only; absent for the planner and the rebuilder)
+            PROTOCOL_DIR=protocol  (the Solidity of ${{ needs.dispatch.outputs.protocol }}, read-only; absent for the planner and the rebuilder)
             ROUNDS=${{ needs.dispatch.outputs.rounds }}
             BUDGET_USD=${{ env.CAP }}
             LEDGER_ISSUE=${{ env.LEDGER_ISSUE }}
@@ -449,6 +517,8 @@ jobs:
           [ -z "$usd" ] && usd=0
           usd=$(printf '%.2f' "$usd")
           ref=""; [ -n "$NUMBER" ] && ref="#$NUMBER"
-          printf '<!-- fm-cost role=%s ref=%s usd=%s run=%s mode=%s -->\n**%s** %s%s— $%s, %s ([run](%s))\n' \
-            "$ROLE" "$ref" "$usd" "$GITHUB_RUN_ID" "${MODE:-work}" "$ROLE" "${ref:+$ref }" "$([ "$MODE" = answer ] && echo 'answer ')" "$usd" "$OUTCOME" "$RUN_URL" > ledger.md
-          gh issue comment "$LEDGER_ISSUE" --body-file ledger.md
+          # Another project's items are named with their repository on the ledger.
+          shown="$ref"; [ -n "$ref" ] && [ "$PROJECT" != "$GITHUB_REPOSITORY" ] && shown="$PROJECT$ref"
+          printf '<!-- fm-cost role=%s ref=%s usd=%s run=%s mode=%s repo=%s -->\n**%s** %s%s— $%s, %s ([run](%s))\n' \
+            "$ROLE" "$ref" "$usd" "$GITHUB_RUN_ID" "${MODE:-work}" "$PROJECT" "$ROLE" "${shown:+$shown }" "$([ "$MODE" = answer ] && echo 'answer ')" "$usd" "$OUTCOME" "$RUN_URL" > ledger.md
+          gh issue comment "$LEDGER_ISSUE" -R "$GITHUB_REPOSITORY" --body-file ledger.md
