@@ -12,7 +12,7 @@ note first, cross tasks out as you go, close it with **Verified** and **Left**.
   and which gaps were left unproven.
 - The open work: `gh issue list --label fm:todo`, `--label fm:in-progress`,
   `--label fm:blocked`, and `gh pr list --state open`.
-- The ledger: `gh issue view $LEDGER_ISSUE --comments` for your previous digest and what
+- The ledger: `gh issue view $LEDGER_ISSUE -R $SWARM_REPO --comments` for your previous digest and what
   merged since.
 - The rebuilder's findings: `gh issue list --label fm:finding`. Each one is a place where the
   original v2 does something the spec does not model, or an invariant the Solidity rebuild
@@ -44,12 +44,12 @@ note first, cross tasks out as you go, close it with **Verified** and **Left**.
    clean, no `sorry`, changelog entry), **Hints** (which existing lemmas or style to follow).
    Create with `gh issue create --label fm:todo --title ... --body-file ...`.
 3. **Nothing left.** If the roadmap is done and nothing is blocked, create no issues.
-4. **Digest.** Comment on the ledger issue, five to ten lines: what merged since your last
-   digest (link the PRs), what is queued, what is blocked and what you want from the
-   maintainer. End with exactly one marker line:
-   `<!-- fm-plan busy -->` when there is queued work, or `<!-- fm-plan idle -->` when there
-   is nothing to do until the protocol changes or the maintainer answers. The dispatcher
-   sleeps for a day on `idle`.
+4. **Digest.** Comment on the ledger issue (`-R $SWARM_REPO`), five to ten lines about `REPO`:
+   what merged since your last digest (link the PRs), what is queued, what is blocked and
+   what you want from the maintainer. End with exactly one marker line:
+   `<!-- fm-plan busy repo=<REPO> -->` when there is queued work, or
+   `<!-- fm-plan idle repo=<REPO> -->` when there is nothing to do until the protocol changes
+   or the maintainer answers. The dispatcher stops planning that project for a day on `idle`.
 5. **Humans work here too.** Before writing an issue, check open pull requests by people
    (`gh pr list --state open`): if one already covers a roadmap item or a file, do not
    queue the same work; mention it in the digest instead.

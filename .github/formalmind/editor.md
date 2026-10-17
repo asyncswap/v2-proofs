@@ -11,7 +11,7 @@ first, cross tasks out as you go, close it with **Verified** and **Left**.
 ## Where you are
 
 - The cycle state is your last `<!-- fm-cycle n=<k> phase=<phase> -->` marker on the ledger
-  (`gh api repos/$REPO/issues/$LEDGER_ISSUE/comments --paginate`). No marker means cycle 1,
+  (`gh api repos/$SWARM_REPO/issues/$LEDGER_ISSUE/comments --paginate`). No marker means cycle 1,
   phase `spec`. `SINCE` is the `dev` commit of your last run.
 - `MODE=answer`: someone asked the editor a question; follow `answer.md` instead.
 - What moved since `SINCE`: `git log --oneline SINCE..origin/dev`, the new `FORMAL_MIND.md`

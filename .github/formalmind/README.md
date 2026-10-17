@@ -13,6 +13,33 @@ role (or human) can stop to ask another role a question with `/ask <role>`. Only
 `@fm-<role>` (those handles are not ours, and `@fm-chief` is a stranger's account) or
 `@formalmind` (that summons the chat bot, which is a different workflow).
 
+## One swarm, several projects
+
+The swarm is one team with one budget, and it works more than one project. This repository
+is its **home**: the workflow, these role docs, the secrets, and the swarm-wide issues
+(ledger, notebook, chief, assistant) live here. `projects.json` lists every proofs
+repository the swarm works in, each with the protocol repository it models:
+
+```json
+{ "projects": [{ "repo": "asyncswap/v2-proofs", "protocol": "asyncswap/v2" }] }
+```
+
+Every sweep the dispatcher looks across all of them and picks **one** job, in the usual
+order (an `/ask` first, then merge, review, revise, resume, the oldest queued issue, the
+editor, plan); within a step the oldest item wins, whichever project it is in. Each
+project keeps its own `fm:` labels, issues and PRs. Your run gets two repositories:
+
+- `REPO` is the proofs repository this job is in. Its issues, PRs, labels and branches are
+  where you work, and it is the checkout you are in.
+- `SWARM_REPO` is this home. The ledger, the notebook, the chief's and the assistant's
+  issues are always here: `gh api repos/$SWARM_REPO/issues/$NOTEBOOK_ISSUE/...`,
+  `gh issue comment $LEDGER_ISSUE -R $SWARM_REPO ...`. When the two are the same, nothing
+  changes.
+
+`PROTOCOL_DIR` holds that project's protocol. The rebuild cycle (`cycle.md`, the editor)
+is this home's only. A label change in another project's repository is picked up on the
+next half-hourly sweep; here it still wakes the dispatcher at once.
+
 ## Shared memory is GitHub
 
 | Thing | Meaning |
@@ -122,7 +149,8 @@ of three ways, and every final comment says which in its last line:
 Write the path first and every flag after it: `gh api repos/$REPO/... -X PATCH -F body=@file`.
 The tool allowlist matches commands word by word, so `gh api` must be the first two words;
 a command that starts with `gh api -X ...` or `gh api --paginate ...` is refused and your
-run silently loses that step. Only call paths under `repos/$REPO/`.
+run silently loses that step. Only call paths under `repos/$REPO/` and, for the swarm-wide
+issues, `repos/$SWARM_REPO/`.
 
 ## Notebook
 
@@ -131,11 +159,11 @@ written as a task list that gets crossed out as the work happens. The chief read
 day's notes in the evening and checks them against what is actually on `dev`.
 
 1. **Open the note first**, before any real work, with
-   `gh api repos/$REPO/issues/$NOTEBOOK_ISSUE/comments -F body=@note.md --jq .id` and keep
+   `gh api repos/$SWARM_REPO/issues/$NOTEBOOK_ISSUE/comments -F body=@note.md --jq .id` and keep
    the returned comment id. `note.md` is:
 
    ```markdown
-   <!-- fm-note role=<role> ref=#<n> run=<RUN_ID> -->
+   <!-- fm-note role=<role> ref=#<n> run=<RUN_ID> repo=<REPO> -->
    **<role>** #<n> — <one line: what this run is for>
    - [ ] <task>
    - [ ] <task>
@@ -143,7 +171,7 @@ day's notes in the evening and checks them against what is actually on `dev`.
 
    Tasks are the concrete steps you intend to take, three to eight of them, in order.
 2. **Cross out as you go.** After each task, rewrite the comment with
-   `gh api repos/$REPO/issues/comments/<id> -X PATCH -F body=@note.md`: `- [x]` for done,
+   `gh api repos/$SWARM_REPO/issues/comments/<id> -X PATCH -F body=@note.md`: `- [x]` for done,
    `- [ ] ~~task~~ dropped: <why>` for abandoned, and new lines for tasks you discovered.
    Never delete a task; the history of the list is the point.
 3. **Close the note** with two more lines under the list before you post your final

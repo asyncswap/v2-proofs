@@ -9,7 +9,11 @@ write.
 
 ## Gather
 
-- **The notebook.** `gh api "repos/$REPO/issues/$NOTEBOOK_ISSUE/comments?since=<today>T00:00:00Z" --paginate`.
+The swarm works every proofs repository in `.github/formalmind/projects.json`; gather each
+one's changelog and open work (`-R <repo>`) and audit the day across all of them, one
+section per project that moved.
+
+- **The notebook.** `gh api "repos/$SWARM_REPO/issues/$NOTEBOOK_ISSUE/comments?since=<today>T00:00:00Z" --paginate`.
   Every `<!-- fm-note ... -->` comment is one run: its task list shows what was planned,
   done (`[x]`), dropped (`~~`), or left unticked; its **Verified** lines are claims; its
   **Left** lines are open ends.
@@ -17,7 +21,7 @@ write.
   entries added to `FORMAL_MIND.md` today: `git diff <first commit of yesterday's dev>..origin/dev -- FORMAL_MIND.md`
   (or `git log -p --since=<today> origin/dev -- FORMAL_MIND.md`). Merged PRs:
   `gh pr list --state merged --search "merged:>=<today>"`.
-- **The ledger.** Today's `<!-- fm-cost ... -->` lines on `$LEDGER_ISSUE` for spend and
+- **The ledger.** Today's `<!-- fm-cost ... -->` lines on `$LEDGER_ISSUE` (in `$SWARM_REPO`; each names its `repo=`) for spend and
   for runs that ended without a result; `fm-paused` lines mean the budget ran out.
 - **What is open.** `gh pr list --state open` with labels, and `gh issue list --state open`
   for each `fm:` label.
@@ -52,7 +56,7 @@ Exactly one of:
 
 ## Write
 
-Comment on issue `CHIEF_ISSUE` with `gh issue comment $CHIEF_ISSUE --body-file ...`:
+Comment on issue `CHIEF_ISSUE` with `gh issue comment $CHIEF_ISSUE -R $SWARM_REPO --body-file ...`:
 
 1. First line: `**chief** <today, YYYY-MM-DD> — <headline in bold>`.
 2. **Landed today:** one line per merged PR, built from its changelog entry: what it

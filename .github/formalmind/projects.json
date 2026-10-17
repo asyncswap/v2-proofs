@@ -1,0 +1,5 @@
+{
+  "projects": [
+    { "repo": "asyncswap/v2-proofs", "protocol": "asyncswap/v2" }
+  ]
+}
