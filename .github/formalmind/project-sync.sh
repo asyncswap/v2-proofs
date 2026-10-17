@@ -86,8 +86,6 @@ sync_one() {
 }
 
 if [ "${1:-}" = --all ]; then
-	mapfile -t numbers < <(gh api --paginate "repos/$REPO/issues?state=all&per_page=100" --jq '.[].number')
-else
-	numbers=("$@")
+	set -- $(gh api --paginate "repos/$REPO/issues?state=all&per_page=100" --jq '.[].number')
 fi
-for n in "${numbers[@]}"; do sync_one "$n"; done
+for n in "$@"; do sync_one "$n"; done
