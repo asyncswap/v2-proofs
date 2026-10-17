@@ -38,8 +38,8 @@ theorem BalNonNeg.transfer {cfg : Config} {t : Tx} (h : BalNonNeg cfg t.w) (c : 
     (n : ℕ) (hn : s ≠ cfg.pm → (n : ℤ) ≤ t.w.bal c s) : BalNonNeg cfg (t.transfer c s d n).w := by
   intro c' x hx
   rw [bal_transfer_apply]
-  split_ifs <;> subst_vars <;> first | exact h _ _ hx | (have := h c' x hx; omega)
-    | (have := hn hx; omega)
+  have hx' := h c' x hx
+  split_ifs <;> subst_vars <;> first | omega | (have := hn hx; omega)
 
 theorem BalNonNeg.take {cfg : Config} {t : Tx} (h : BalNonNeg cfg t.w) c d n b :
     BalNonNeg cfg (t.take cfg c d n b).w :=
@@ -136,15 +136,15 @@ theorem BalNonNeg.fillBody {cfg : Config} {w : World} {s o mp v} (h : BalNonNeg 
   apply BalNonNeg.setPendingNative; apply BalNonNeg.deleteOrder; apply BalNonNeg.settleBidBody
   apply BalNonNeg.payOutBody; apply BalNonNeg.mint; apply BalNonNeg.payOut
   by_cases hn : cfg.isNative o.output = true
-  · simp only [hn, if_true] at hv ⊢
+  · simp only [hn, ite_true] at hv ⊢
     obtain ⟨rfl, hle⟩ := hv
     refine BalNonNeg.settle (((BalNonNeg.transfer (t := Tx.start w) h _ _ _ _ (fun _ => hle)
       ).setPendingNative _).setPendingNative _) _ _ _ _ (fun _ => ?_)
     show _ ≤ ((Tx.start w).transfer o.output s cfg.hook (liveGross w o.key)).w.bal o.output cfg.hook
     rw [bal_transfer_apply]
-    simp only [bal_start, if_true]
+    simp only [bal_start, ite_true]
     split_ifs <;> subst_vars <;> omega
-  · simp only [hn, if_false, Bool.false_eq_true] at hv ⊢
+  · simp only [hn, ite_false, Bool.false_eq_true] at hv ⊢
     exact BalNonNeg.settle (t := Tx.start w) h _ _ _ _ (fun _ => hv.2)
 
 /-! ## Entry points -/
@@ -162,7 +162,8 @@ theorem step_bal_nonneg {cfg : Config} {w w' : World} {a : Action}
   intro hN
   cases a with
   | swap s o v up ms =>
-    have hgap := hgap s o v up ms rfl
+    have hgap' := hgap s o v up ms rfl
+    have hown := (hswap s o v up ms rfl).2
     simp only [step, swap] at h
     split_ifs at h with hg
     obtain ⟨⟨hos, -, -, -, -, hin, hfee, -⟩, -⟩ := hg
@@ -173,27 +174,26 @@ theorem step_bal_nonneg {cfg : Config} {w w' : World} {a : Action}
       rw [hbd] at h; simp only at h; split_ifs at h; simp only [Option.some.injEq] at h; subst h
       simp only [swapBody] at hbd
       refine BalNonNeg.matchLoop ms ?_ hbd
-      apply BalNonNeg.priorityFeeBody
-      · split_ifs with hn
-        · simp only [hn, if_true] at hin
+      have h1 : BalNonNeg cfg (if cfg.isNative o.input = true
+          then Protocol.createBody cfg ((Tx.start w).transfer o.input o.owner cfg.router v) o cfg.router
+          else Protocol.createBody cfg (Tx.start w) o o.owner).w := by
+        split_ifs with hn
+        · simp only [hn, ite_true] at hin
           obtain ⟨rfl, hle⟩ := hin
           refine BalNonNeg.createBody (BalNonNeg.transfer (t := Tx.start w) hN _ _ _ _ (fun _ => hle))
             _ _ (fun _ => ?_)
           rw [bal_transfer_apply]
           have := hN o.input cfg.router cfg.router_ne_pm
-          simp only [bal_start, if_true]
-          split_ifs <;> subst_vars <;> omega
-        · simp only [hn, if_false, Bool.false_eq_true] at hin
+          simp only [bal_start, ite_true]
+          split_ifs <;> omega
+        · simp only [hn, ite_false, Bool.false_eq_true] at hin
           exact BalNonNeg.createBody (t := Tx.start w) hN _ _ (fun _ => hin.2)
-      · intro _
-        by_cases hz : o.priorityFee = 0
-        · rw [hz]; exact_mod_cast (hN numeraire o.owner (hswap _ _ _ _ _ rfl).2).trans' (le_refl _)
-            |>.trans' (by
-              split_ifs <;> simp only [bal_createBody, bal_transfer_apply, bal_start] <;>
-                split_ifs <;> omega)
-        · have hne : numeraire ≠ o.input := fun e => hz (hgap e.symm)
-          split_ifs <;> simp only [bal_createBody, bal_transfer_apply, bal_start, hne, if_false] <;>
-            exact hfee
+      refine h1.priorityFeeBody o (fun _ => ?_)
+      by_cases hz : o.priorityFee = 0
+      · rw [hz]; exact_mod_cast h1 numeraire o.owner hown
+      · have hne : numeraire ≠ o.input := fun e => hz (hgap' e.symm)
+        split_ifs <;> simp only [bal_createBody, bal_transfer_apply, bal_start, hne, ite_false] <;>
+          exact hfee
   | matchBook _ mm ms =>
     simp only [step, matchBook] at h
     split_ifs at h
