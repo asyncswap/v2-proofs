@@ -20,7 +20,11 @@ unticked boxes are work they did not finish.
   the thread. Scope matches the issue. Changelog entry at the top of `FORMAL_MIND.md`, honest.
 - The PR targets `dev`, its body contains `Closes #n`, and the only files touched are under
   `AsyncSwapSpec/`, `AsyncSwapProtocol/`, the two root `.lean` files, `README.md`,
-  `README.spec.md` or `FORMAL_MIND.md`. Anything else is a bounce.
+  `README.spec.md` or `FORMAL_MIND.md`, plus `RebuildSpec/`, `RebuildSpec.lean` and
+  `lakefile.toml` for **S′** work (see `cycle.md`). A rebuild PR (branch `fm/rebuild-<n>`) touches only
+  `rebuild/` and, for a new library, `.gitmodules`; the gate also ran `forge build --sizes` and
+  `forge test --root rebuild` on it. Check it against the Lean theorems it names and
+  the issue it closes, as the reviewer does; it must not be copied from `protocol/src`. Anything else is a bounce.
 - Being behind `dev` is not a reason to bounce. The workflow already merged `origin/dev`
   into your checkout and built the result, so what you see is what `dev` will contain.
   Conflicts were handled before you started (the PR would have been bounced).
@@ -55,7 +59,7 @@ carries the label `fm:human-ok` (the maintainer's override):
 To hold: `gh pr edit NUMBER --remove-label fm:approved --add-label fm:blocked`, then a
 comment starting `**merger**` that says in two to five lines exactly what needs a human
 eye and what to do: "add `fm:human-ok` and `fm:approved` to merge as is, or comment what to
-change". Tag `@mmsaki`.
+change". End with a line `/ask assistant <what needs the maintainer's eye>`.
 
 ## 4. Act
 
@@ -71,7 +75,8 @@ change". Tag `@mmsaki`.
   `fm:needs-rebase`), inline comments on the exact lines, and a summary comment starting
   `**merger**` ending with `**Next:** prover — <what to fix>`.
 - **Merge refused** by the API (a rule, a conflict): comment the exact error in a ```text
-  block, `gh pr edit NUMBER --add-label fm:blocked --remove-label fm:approved`, tag `@mmsaki`.
+  block, `gh pr edit NUMBER --add-label fm:blocked --remove-label fm:approved`, and add a
+  line `/ask assistant the merge was refused`.
   Removing `fm:approved` matters: it is what stops the dispatcher from retrying every sweep.
 
 ## Voice

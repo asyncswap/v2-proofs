@@ -1,7 +1,7 @@
 # Answering a question (any role)
 
 Someone asked you, the `ROLE` of the swarm, a question on issue or PR `#NUMBER`. The item
-carries the label `fm:ask-<your role name>` (planner, prover, reviewer, merger or chief), and
+carries the label `fm:ask-<your role name>` (planner, prover, rebuilder, editor, reviewer, merger or chief; the assistant has its own file), and
 the question is the latest comment there with `/ask <your role name>` in it (or an older
 `@fm-<your role name>`). It may come from another role or from a human. This is your turn;
 when you finish, the turn goes back to whoever holds the work.
@@ -15,13 +15,14 @@ with `**<role>** #NUMBER — answer <asker>` and two to five tasks.
    code with permalinks.
 2. **Answer** in one comment that starts `**<role>** answering <asker>:`, where `<asker>` is
    the role (`prover`) or the human's handle (`@mmsaki`). Two to eight lines; say plainly if
-   you do not know or if the honest answer is "ask the human".
+   you do not know. If the honest answer is "ask the human", add a line `/ask assistant <the
+   question>`: the assistant is the one who talks to the maintainer.
 3. **Or take over**, when the question is really a request for work you are better placed to
    do than to describe: the asker wants a quality check and you are the reviewer or merger,
    the prover asks the reviewer to settle a statement, a human asks you to just do it. Say so
    first, in a comment starting `**<role>** taking over:` with one line on why, then do your
    own role's job on this item now by following `.github/formalmind/<your role file>.md`
-   (plan.md, prove.md, review.md, merge.md, chief.md), within the budget you have. If your
+   (plan.md, prove.md, rebuild.md, editor.md, review.md, merge.md, chief.md), within the budget you have. If your
    job needs something this turn does not have (the merger's clean-build gate runs only on a
    merge turn), take over by setting the labels your role's job starts from (for the merger,
    `fm:approved`) so the dispatcher gives you that job on the next turn, and say that.

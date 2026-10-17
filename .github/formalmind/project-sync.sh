@@ -5,9 +5,9 @@
 #   closed (merged PR / completed issue)   -> Done
 #   fm:blocked                             -> Blocked
 #   fm:approved                            -> Approved
-#   fm:in-progress | fm:changes | fm:needs-rebase -> In progress
+#   fm:in-progress | fm:rebuilding | fm:changes | fm:needs-rebase -> In progress
 #   any other open PR                      -> In review
-#   fm:todo                                -> Todo
+#   fm:todo | fm:rebuild | fm:finding | fm:intent -> Todo
 #   anything else open                     -> no Status
 #
 # Closed-unmerged PRs and issues closed as not planned leave the project. The swarm's own
@@ -39,9 +39,9 @@ status_of() { # $1 = issue JSON from the REST API
 		| if .state == "closed" then "Done"
 		  elif ($l | index("fm:blocked")) then "Blocked"
 		  elif ($l | index("fm:approved")) then "Approved"
-		  elif ($l | index("fm:in-progress")) or ($l | index("fm:changes")) or ($l | index("fm:needs-rebase")) then "In progress"
+		  elif ($l | index("fm:in-progress")) or ($l | index("fm:rebuilding")) or ($l | index("fm:changes")) or ($l | index("fm:needs-rebase")) then "In progress"
 		  elif .pull_request then "In review"
-		  elif ($l | index("fm:todo")) then "Todo"
+		  elif ($l | index("fm:todo")) or ($l | index("fm:rebuild")) or ($l | index("fm:finding")) or ($l | index("fm:intent")) then "Todo"
 		  else "" end' <<<"$1"
 }
 
