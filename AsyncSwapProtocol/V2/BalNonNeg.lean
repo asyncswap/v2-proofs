@@ -12,14 +12,14 @@ Per ledger operation:
 * every other operation leaves `bal` alone.
 
 The guarded debits are the router's input settle in `swap` (`amountIn ≤ bal o.input owner`,
-or `value ≤ bal o.input sender` for native input, `Model.lean:341`), the bid settle
-(`priorityFee ≤ bal numeraire owner`, `Model.lean:343`) and the filler's settle in `fillOrder`
-(`liveGross ≤ bal o.output sender`, `Model.lean:374`).
+or `value ≤ bal o.input sender` for native input), the bid settle and the filler's settle in
+`fillOrder` (`liveGross ≤ bal o.output sender`), all in `Model.lean` (`swapGuard`, `fillGuard`).
 
-**Gap.** A buy order (`o.input = numeraire`) with a non-zero bid debits the owner's numeraire
-twice, `amountIn` then `priorityFee`, but `swapGuard` checks each against the starting balance
-on its own, never their sum.  The model lets that swap drive the owner negative, so
-`step_bal_nonneg` leaves exactly that case out (`hgap`).
+A buy order (`o.input = numeraire`) with a non-zero bid debits the owner's numeraire twice,
+`amountIn` then `priorityFee`: `Router.unlockCallback` settles the input from the owner and then
+`_settlePriorityFee` pulls the bid with a second `safeTransferFrom` from the same, already
+reduced, balance (`Router.sol:286-288`, `:351`), which reverts when the sum is not covered.
+`swapGuard` therefore checks `amountIn + priorityFee ≤ bal numeraire owner` on the buy side.
 -/
 
 namespace AsyncSwapProtocol.V2
@@ -149,20 +149,17 @@ theorem BalNonNeg.fillBody {cfg : Config} {w : World} {s o mp v} (h : BalNonNeg 
 
 /-! ## Entry points -/
 
-/-- **Wallet balances outside the PoolManager stay non-negative across every v2 entry point**,
-    except a buy-side `swap` with a non-zero bid (`hgap`; see the module docstring).
+/-- **Wallet balances outside the PoolManager stay non-negative across every v2 entry point.**
     Environment assumptions as in `step_escrow`. -/
 theorem step_bal_nonneg {cfg : Config} {w w' : World} {a : Action}
     (h : step cfg w a = some w')
     (hswap : ∀ s o v up ms, a = .swap s o v up ms → o.owner ≠ cfg.hook ∧ o.owner ≠ cfg.pm)
     (_hfill : ∀ s o mp v, a = .fillOrder s o mp v → s ≠ cfg.hook)
-    (_hredeem : ∀ s n r, a = .redeemNative s n r → s ≠ cfg.hook)
-    (hgap : ∀ s o v up ms, a = .swap s o v up ms → o.input = numeraire → o.priorityFee = 0) :
+    (_hredeem : ∀ s n r, a = .redeemNative s n r → s ≠ cfg.hook) :
     BalNonNeg cfg w → BalNonNeg cfg w' := by
   intro hN
   cases a with
   | swap s o v up ms =>
-    have hgap' := hgap s o v up ms rfl
     have hown := (hswap s o v up ms rfl).2
     simp only [step, swap] at h
     split_ifs at h with hg
@@ -189,9 +186,13 @@ theorem step_bal_nonneg {cfg : Config} {w w' : World} {a : Action}
         · simp only [hn, ite_false, Bool.false_eq_true] at hin
           exact BalNonNeg.createBody (t := Tx.start w) hN _ _ (fun _ => hin.2)
       refine h1.priorityFeeBody o (fun _ => ?_)
-      by_cases hz : o.priorityFee = 0
-      · rw [hz]; exact_mod_cast h1 numeraire o.owner hown
-      · have hne : numeraire ≠ o.input := fun e => hz (hgap' e.symm)
+      by_cases hi : o.input = numeraire
+      · simp only [hi, ↓reduceIte] at hfee; rw [← hi] at hfee ⊢
+        split_ifs at hin ⊢ <;> simp only [bal_createBody, bal_transfer_apply, bal_start, ite_true] at hin ⊢ <;>
+          generalize o.owner = ow at hin hfee hown ⊢ <;> split_ifs <;> subst_vars <;>
+          first | omega | exact absurd rfl hown
+      · have hne : numeraire ≠ o.input := fun e => hi e.symm
+        simp only [hi, ite_false, zero_add] at hfee
         split_ifs <;> simp only [bal_createBody, bal_transfer_apply, bal_start, hne, ite_false] <;>
           exact hfee
   | matchBook _ mm ms =>

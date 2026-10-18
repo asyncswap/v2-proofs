@@ -340,7 +340,9 @@ abbrev swapGuard (cfg : Config) (w : World) (sender : Address) (o : Order) (valu
   ∧ up.amountOutMin = o.amountOutMin ∧ up.priorityFee = o.priorityFee
   ∧ (if cfg.isNative o.input then value = o.amountIn ∧ (value : ℤ) ≤ w.bal o.input sender
      else value = 0 ∧ (o.amountIn : ℤ) ≤ w.bal o.input o.owner)
-  ∧ (o.priorityFee : ℤ) ≤ w.bal numeraire o.owner
+  -- The bid is a second `safeTransferFrom` of the numeraire after the input settle
+  -- (`Router.sol:286-288`, `:351`), so a buy must cover `amountIn + priorityFee`.
+  ∧ ((if o.input = numeraire then (o.amountIn : ℤ) else 0) + o.priorityFee ≤ w.bal numeraire o.owner)
   ∧ createHookGuard cfg w o up
 
 /-- `Router.swap` → `unlock` → create → bid escrow → `matchNewOrder` with the book's choices. -/
