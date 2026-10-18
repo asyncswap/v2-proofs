@@ -1,0 +1,12 @@
+{
+	"projects": [
+		{
+			"repo": "asyncswap/v2-proofs",
+			"protocol": "asyncswap/v2"
+		},
+		{
+			"repo": "mmsaki/v4-core-proofs",
+			"protocol": "mmsaki/v4-core"
+		}
+	]
+}
