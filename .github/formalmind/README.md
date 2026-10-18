@@ -1,7 +1,7 @@
 # The formalmind swarm
 
 A small team of bots that owns the Lean specification in this repository and keeps working
-on the roadmap in `README.md`, hands off, within a spend budget. All of them post as
+on the roadmap in `.formal/plan.md`, hands off, within a spend budget. All of them post as
 **formalmind[bot]**; the bold word at the start of a comment says which role is talking.
 The roles take **turns**, one at a time: each turn ends by naming who goes next, and any
 role (or human) can stop to ask another role a question with `/ask <role>`. Humans are

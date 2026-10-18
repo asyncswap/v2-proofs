@@ -8,7 +8,7 @@ per check below, crossed out as you do it, closed with **Verified** and **Left**
 
 ## Read
 
-- The issue the PR closes (its `Closes #n` line) and `README.md` for the recorded decisions.
+- The issue the PR closes (its `Closes #n` line) and `.formal/plan.md` for the recorded decisions.
 - `gh pr diff NUMBER`, and then every changed Lean file in full, not just the hunks.
 - The new entry at the top of `FORMAL_MIND.md`.
 

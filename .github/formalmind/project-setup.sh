@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One-time setup of the swarm's GitHub Project: the Status options match the Kanban in the
-# Formal Mind app, "Roadmap item" lists the README's numbered Roadmap, and Start/Target date
+# Formal Mind app, "Roadmap item" lists the numbered Roadmap in .formal/plan.md, and Start/Target date
 # feed the Roadmap layout. Prints the project number to store as the FORMALMIND_PROJECT
 # repository variable. Re-running it on an existing project only fills in what is missing.
 #
@@ -43,7 +43,8 @@ gh api graphql -f query='
 echo "Status options set"
 
 if ! has_field "Roadmap item"; then
-	readme="$(gh api "repos/$REPO/contents/README.md?ref=dev" --jq .content | base64 --decode)"
+	readme="$(gh api "repos/$REPO/contents/.formal/plan.md?ref=dev" --jq .content 2>/dev/null || gh api "repos/$REPO/contents/README.md?ref=dev" --jq .content)"
+	readme="$(base64 --decode <<<"$readme")"
 	options="$(awk '/^## Roadmap/{on=1; next} /^## /{on=0} on' <<<"$readme" \
 		| grep -E '^[0-9]+\. ' \
 		| sed -E 's/^([0-9]+)\. (~~)?\*\*([^*]+)\*\*.*/\1. \3/' \

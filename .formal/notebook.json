@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "mode": "hosted",
+  "protocol": {
+    "repo": "asyncswap/v2",
+    "language": "solidity"
+  },
+  "upstream": null,
+  "maintainers": [
+    "mmsaki"
+  ],
+  "branch": "dev",
+  "issues": {
+    "ledger": 38,
+    "notebook": 55,
+    "chief": 53
+  },
+  "budget": {
+    "dailyUsd": 5,
+    "monthlyUsd": 150
+  },
+  "executor": "hosted"
+}

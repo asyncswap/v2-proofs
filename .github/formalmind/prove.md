@@ -22,7 +22,7 @@ those.
 
 ## Rules
 
-- Read `README.md` first for the recorded decisions and standing assumptions.
+- Read `.formal/plan.md` first for the recorded decisions and standing assumptions.
 - The Solidity the spec models is checked out read-only under `protocol/` (`src/*.sol`,
   `src/libraries/*.sol`). Transcribe from it; never guess field orders, type strings or
   constants from memory. Cite the Solidity line in your PR comment when a definition

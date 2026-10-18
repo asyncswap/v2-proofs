@@ -19,7 +19,7 @@ unticked boxes are work they did not finish.
   checked out under `protocol/`, so compare against `protocol/src` rather than trusting
   the thread. Scope matches the issue. Changelog entry at the top of `FORMAL_MIND.md`, honest.
 - The PR targets `dev`, its body contains `Closes #n`, and the only files touched are under
-  `AsyncSwapSpec/`, `AsyncSwapProtocol/`, the two root `.lean` files, `README.md`,
+  `AsyncSwapSpec/`, `AsyncSwapProtocol/`, the two root `.lean` files, `README.md`, `.formal/plan.md`,
   `README.spec.md` or `FORMAL_MIND.md`. Anything else is a bounce.
 - Being behind `dev` is not a reason to bounce. The workflow already merged `origin/dev`
   into your checkout and built the result, so what you see is what `dev` will contain.
@@ -45,8 +45,8 @@ Read every comment and review comment on the PR (`gh pr view NUMBER --comments`,
 Hold the PR for the maintainer instead of merging when any of these is true, unless the PR
 carries the label `fm:human-ok` (the maintainer's override):
 
-- a theorem statement changed or was removed, or a standing assumption in `README.md` moved;
-- a recorded decision in `README.md` is touched, or a definition that models protocol
+- a theorem statement changed or was removed, or a standing assumption in `.formal/plan.md` moved;
+- a recorded decision in `.formal/plan.md` is touched, or a definition that models protocol
   behaviour changed meaning (not just a proof);
 - `ROUNDS` is 4 or more, or the reviewer and you disagree on something substantive;
 - the diff is wide: more than four Lean files, or more than about 400 changed lines;
