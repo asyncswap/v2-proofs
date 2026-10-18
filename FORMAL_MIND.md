@@ -6,6 +6,34 @@ could not be proved, and what the build said. Humans may add entries too; keep t
 
 <!-- formal-mind: insert new entries directly below this line -->
 
+## 2026-10-18 — asyncswap/v2-proofs issue #74 — spec: settle the buy-side priority-fee gap (hgap) in step_bal_nonneg against the contract
+
+**Trigger:** swarm issue #74.
+
+**Contract change.** None. The contract was read to settle the gap: `Router.unlockCallback`
+settles the maker's input with `input.settle(POOLMANAGER, user, amountIn, false)`
+(`Router.sol:286`, a `safeTransferFrom` from the owner, `CurrencySettler.sol:25`) and then calls
+`_settlePriorityFee` (`Router.sol:288`), which pulls the bid with a second
+`safeTransferFrom(order.owner, POOLMANAGER, amount)` of the numeraire (`Router.sol:351`). On a buy
+the second transfer reads the already reduced balance, so the call reverts unless the owner
+holds `amountIn + priorityFee`.
+
+**Spec impact.** **Model definition changed:** `swapGuard` (`AsyncSwapProtocol/V2/Model.lean`)
+now checks `(if o.input = numeraire then amountIn else 0) + priorityFee ≤ bal numeraire owner`
+instead of `priorityFee ≤ bal numeraire owner`. The sell side is unchanged; on the buy side the
+conjunct is strictly stronger, for both the native and ERC-20 input branches. `Spec.lean`
+needed no change (`swap_eq_some_iff` is stated over `swapGuard`). Docstrings in
+`BalNonNeg.lean` updated.
+
+**Theorems added.** None.
+
+**Theorems changed or weakened.** `step_bal_nonneg` is strengthened: the `hgap` hypothesis is
+gone, so it now covers every v2 entry point including buy-side swaps with a bid.
+
+**Unproven gaps.** None.
+
+**Build.** `lake build` clean, no `sorry`, no new axioms.
+
 ## 2026-10-17 — asyncswap/v2-proofs issue #61 — spec: pool reserves and claim supply stay non-negative across every v2 entry point
 
 **Trigger:** swarm issue #61.
