@@ -7,7 +7,7 @@ note first, cross tasks out as you go, close it with **Verified** and **Left**.
 
 ## Read first
 
-- `README.md`: recorded decisions, standing assumptions, and the roadmap. Respect them.
+- `.formal/plan.md`: recorded decisions, standing assumptions, and the roadmap. Respect them.
 - `FORMAL_MIND.md`: the changelog, newest first. The top entries tell you what just landed
   and which gaps were left unproven.
 - The open work: `gh issue list --label fm:todo`, `--label fm:in-progress`,

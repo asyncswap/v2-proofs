@@ -18,7 +18,7 @@ is set, the workflow has already tried to react 👀 to that message.
 
 ## Get the context first
 
-- Read `README.md`: it records the decisions, standing assumptions and roadmap. Respect them.
+- Read `.formal/plan.md`: it records the decisions, standing assumptions and roadmap. Respect them.
 - Read the whole thread, not just the message that mentioned you:
   `gh issue view $NUMBER --comments` or `gh pr view $NUMBER --comments`.
   On a PR also look at `gh pr diff $NUMBER` and, for review threads,

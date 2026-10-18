@@ -1,6 +1,6 @@
 name: formalmind swarm
 
-# A small team of bots that take the roadmap in README.md and keep working on it, hands off,
+# A small team of bots that take the roadmap in .formal/plan.md and keep working on it, hands off,
 # within a spend budget. GitHub is their shared memory: issues are the task queue, `fm:*`
 # labels are the state machine, pull requests are the deliverables, and issue #38 (the
 # ledger) is the spend log and the planner's digest channel. See .github/formalmind/README.md.
