@@ -7,6 +7,11 @@
 		{
 			"repo": "mmsaki/v4-core-proofs",
 			"protocol": "mmsaki/v4-core"
+		},
+		{
+			"repo": "asyncswap/protocol-proofs",
+			"protocol": "asyncswap/protocol",
+			"mode": "audit"
 		}
 	]
 }
