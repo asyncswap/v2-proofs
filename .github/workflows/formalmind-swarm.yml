@@ -319,7 +319,7 @@ jobs:
             NUMBER=${{ env.NUMBER }}
             BRANCH=${{ steps.ctx.outputs.branch }}
             SHA=${{ steps.ctx.outputs.sha }}
-            PROTOCOL_DIR=protocol  (the Solidity of asyncswap/v2, read-only; absent for the planner)
+            PROTOCOL_DIR=protocol  (the Solidity of asyncswap/contracts, read-only; absent for the planner)
             ROUNDS=${{ needs.dispatch.outputs.rounds }}
             BUDGET_USD=${{ env.CAP }}
             LEDGER_ISSUE=${{ env.LEDGER_ISSUE }}
