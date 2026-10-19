@@ -1,6 +1,6 @@
 name: formal-mind bot
 
-# Triggered when a protocol repository pushes (see asyncswap/v2 .github/workflows/proofs-dispatch.yml
+# Triggered when a protocol repository pushes (see asyncswap/contracts .github/workflows/proofs-dispatch.yml
 # and formalmind/tools/handle-proofs-dispatch.ts), or by hand.
 on:
   repository_dispatch:
@@ -10,7 +10,7 @@ on:
       repo:
         description: protocol repository (owner/name)
         required: true
-        default: asyncswap/v2
+        default: asyncswap/contracts
       sha:
         description: full 40-character commit SHA to reconcile the spec with
         required: true

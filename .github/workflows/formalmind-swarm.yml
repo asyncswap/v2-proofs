@@ -236,7 +236,7 @@ jobs:
         if: ${{ env.ROLE != 'plan' }}
         uses: actions/checkout@v4
         with:
-          repository: asyncswap/v2
+          repository: asyncswap/contracts
           path: protocol
           token: ${{ secrets.PROTOCOL_READ_TOKEN || github.token }}
       - name: Install elan

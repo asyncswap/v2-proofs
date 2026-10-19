@@ -2,7 +2,7 @@
 	"projects": [
 		{
 			"repo": "asyncswap/v2-proofs",
-			"protocol": "asyncswap/v2"
+			"protocol": "asyncswap/contracts"
 		},
 		{
 			"repo": "mmsaki/v4-core-proofs",
