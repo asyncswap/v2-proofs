@@ -5,13 +5,13 @@ name: formalmind swarm
 # labels are the state machine, pull requests are the deliverables, and issue #38 (the
 # ledger) is the spend log and the planner's digest channel. See .github/formalmind/README.md.
 #
-# Every 30 minutes (or as soon as an `fm:` label changes) the dispatcher picks at most one
+# Every 10 minutes (or as soon as an `fm:` label changes) the dispatcher picks at most one
 # model job, in this order: merge an approved PR, review a PR, revise a PR the reviewer
 # bounced, resume or start an issue, or plan when the queue is empty. Nothing runs when the
 # day's or month's budget is spent.
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "*/10 * * * *"
     - cron: "40 23 * * *"   # the chief reports, once a day before the budget resets
   workflow_dispatch:
     inputs:
