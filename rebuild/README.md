@@ -3,7 +3,7 @@
 A from-scratch Solidity implementation of the Async Swap v2 protocol, written only from the Lean 4
 specification in this repository (first draft from `dev` @ `1969fd0`). The original `asyncswap/v2` sources
 were not consulted, and the rebuilder that maintains this folder never reads them: the editor compares the
-two and files what differs. The algorithm is in [`.github/formalmind/cycle.md`](../.github/formalmind/cycle.md).
+two and files what differs. The algorithm is in the [`formalmind:cycle` skill](https://github.com/formalmind/skills/blob/main/plugins/formalmind/skills/cycle/SKILL.md).
 
 ```sh
 forge build --sizes --root rebuild

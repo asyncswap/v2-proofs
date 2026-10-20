@@ -3,7 +3,7 @@ name: formalmind swarm
 # A small team of bots that take the roadmap in README.md and keep working on it, hands off,
 # within a spend budget. GitHub is their shared memory: issues are the task queue, `fm:*`
 # labels are the state machine, pull requests are the deliverables, and issue #38 (the
-# ledger) is the spend log and the planner's digest channel. See .github/formalmind/README.md.
+# ledger) is the spend log and the planner's digest channel. See the formalmind:swarm skill (formalmind/skills).
 #
 # One swarm, several projects: this repository is the swarm's home, and
 # .github/formalmind/projects.json lists every proofs repository it works in. One budget and
@@ -65,7 +65,7 @@ env:
   CAP_CONSOLIDATE: "3.00"
   CAP_CHIEF: "0.40"
   CAP_ASSISTANT: "0.60"
-  # The editor (the rebuild cycle, .github/formalmind/cycle.md) runs at most this often (seconds),
+  # The editor (the rebuild cycle, the formalmind:cycle skill) runs at most this often (seconds),
   # and only when something it compares has moved.
   EDITOR_EVERY: "43200"
   # Model turns (tool-use steps) a role may take in one run. The dollar caps above usually
@@ -322,9 +322,8 @@ jobs:
       NUMBER: ${{ needs.dispatch.outputs.number }}
       KIND: ${{ needs.dispatch.outputs.kind }}
       CAP: ${{ needs.dispatch.outputs.cap }}
-      # The project's proofs repository; the role docs and swarm-wide issues stay in this home.
+      # The project's proofs repository; the swarm-wide issues stay in this home.
       PROJECT: ${{ needs.dispatch.outputs.repo }}
-      DOCS: ${{ needs.dispatch.outputs.repo == github.repository && '.github/formalmind' || 'swarm-home/.github/formalmind' }}
     steps:
       - name: formalmind App token
         id: app
@@ -341,28 +340,6 @@ jobs:
           repository: ${{ needs.dispatch.outputs.repo }}
           token: ${{ needs.dispatch.outputs.repo != github.repository && steps.app.outputs.token || github.token }}
           fetch-depth: 0
-      - name: The swarm's role docs, for a job in another project (read-only, under swarm-home/)
-        if: ${{ needs.dispatch.outputs.repo != github.repository }}
-        uses: actions/checkout@v4
-        with:
-          path: swarm-home
-          sparse-checkout: |
-            .github/formalmind
-            .claude/skills
-      - name: Keep swarm-home out of the project's commits
-        if: ${{ needs.dispatch.outputs.repo != github.repository }}
-        run: echo swarm-home >> .git/info/exclude
-      # The swarm's skills, installed where Claude Code finds them; a project's own skill of the same name wins.
-      - name: The swarm's skills, for a job in another project
-        if: ${{ needs.dispatch.outputs.repo != github.repository }}
-        run: |
-          mkdir -p .claude/skills
-          for s in swarm-home/.claude/skills/*/; do
-            n=$(basename "$s")
-            [ -e ".claude/skills/$n" ] && continue
-            cp -R "$s" ".claude/skills/$n"
-            echo ".claude/skills/$n/" >> .git/info/exclude
-          done
       - name: Check out the branch for this job
         id: ctx
         env:
@@ -454,13 +431,13 @@ jobs:
         id: tools
         run: |
           # Write is for note.md and reply files; no role but prove can commit or push.
-          base="Read,Write,Glob,Grep,Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(git status:*),Bash(git rev-parse:*),Bash(git branch:*),Bash(git fetch:*),Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh issue edit:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr edit:*),Bash(gh api:*)"
+          base="Skill,Read,Write,Glob,Grep,Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(git status:*),Bash(git rev-parse:*),Bash(git branch:*),Bash(git fetch:*),Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh issue edit:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr edit:*),Bash(gh api:*)"
           case "$ROLE" in
             plan) allowed="$base,Bash(gh issue create:*)" ;;
             chief) allowed="$base,Bash(gh run list:*)" ;;
             review) allowed="$base,mcp__github_inline_comment__create_inline_comment" ;;
             merge) allowed="$base,mcp__github_inline_comment__create_inline_comment,Bash(lake:*),Bash(forge:*),Write" ;;
-            prove) allowed="$base,Skill,Edit,Write,Bash(lake:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git rebase:*),Bash(git merge:*),Bash(git switch:*),Bash(git checkout:*),Bash(git stash:*),Bash(gh pr create:*)" ;;
+            prove) allowed="$base,Edit,Write,Bash(lake:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git rebase:*),Bash(git merge:*),Bash(git switch:*),Bash(git checkout:*),Bash(git stash:*),Bash(gh pr create:*)" ;;
             rebuild) allowed="$base,Edit,Write,Bash(forge:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git rebase:*),Bash(git merge:*),Bash(git switch:*),Bash(git checkout:*),Bash(git stash:*),Bash(git submodule:*),Bash(gh pr create:*),Bash(gh issue create:*)" ;;
             # The assistant acts through labels, comments and issues; it never touches code.
             assistant) allowed="$base,Bash(gh issue create:*)" ;;
@@ -474,6 +451,16 @@ jobs:
             assistant) turns=$TURNS_ASSISTANT ;; *) turns=200 ;;
           esac
           echo "turns=$turns" >> "$GITHUB_OUTPUT"
+      # The roles are the formalmind plugin's skills (formalmind/skills), pinned: bump
+      # FORMALMIND_SKILLS_REF (repository variable) to ship a change to them.
+      - name: The formalmind skills, pinned
+        uses: actions/checkout@v4
+        with:
+          repository: formalmind/skills
+          ref: ${{ vars.FORMALMIND_SKILLS_REF || '3cc2de285936c4c9f81977404acd8696bbe5c178' }}
+          path: .formalmind-skills
+      - name: Keep the skills out of the project's commits
+        run: echo .formalmind-skills >> .git/info/exclude
       - uses: anthropics/claude-code-action@v1
         id: bot
         if: ${{ env.ROLE != 'merge' || env.MODE == 'answer' || steps.gate.outputs.clean == 'true' }}
@@ -486,12 +473,15 @@ jobs:
           bot_id: "213248595"
           allowed_bots: "formalmind[bot],formalmind"
           include_fix_links: "false"
+          plugin_marketplaces: ${{ github.workspace }}/.formalmind-skills
+          plugins: formalmind@formalmind
           prompt: |
-            You are the ${{ env.ROLE }} of the formalmind swarm and it is your turn. Read
-            ${{ env.DOCS }}/README.md, then ${{ env.DOCS }}/${{ env.ROLE == 'assistant' && 'assistant' || (env.MODE == 'answer' && 'answer' || env.ROLE) }}.md,
-            and follow them. (Where they say .github/formalmind/, read ${{ env.DOCS }}/.)
+            You are the ${{ env.ROLE }} of the formalmind swarm and it is your turn. Use the
+            formalmind:swarm skill, then formalmind:${{ env.ROLE == 'assistant' && 'assistant' || (env.MODE == 'answer' && 'answer' || env.ROLE) }},
+            and follow them.
 
             ROLE=${{ env.ROLE }}
+            MAINTAINER=mmsaki  (the maintainer's GitHub handle)
             MODE=${{ env.MODE }}  (answer: someone asked you a question on NUMBER; work: your usual job; digest: the assistant's evening update)
             REPO=${{ needs.dispatch.outputs.repo }}  (the project this job is in: its issues, PRs, labels and this checkout)
             SWARM_REPO=${{ github.repository }}  (the swarm's home: the ledger, notebook, chief and assistant issues)

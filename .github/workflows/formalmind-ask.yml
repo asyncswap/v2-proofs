@@ -1,6 +1,6 @@
 # Turns "/ask <role> ..." in an issue, PR or comment into the fm:ask-<role> label, so the
 # dispatcher gives that role the next turn to answer (see "Turns, questions and take-overs" in
-# .github/formalmind/README.md). Works the same for humans and for the swarm's own roles.
+# the formalmind:swarm skill). Works the same for humans and for the swarm's own roles.
 # The older "@fm-<role>" form is accepted too, but don't write it: those handles are not ours.
 name: formalmind ask
 

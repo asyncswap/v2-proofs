@@ -73,13 +73,25 @@ jobs:
         with:
           app-id: ${{ secrets.FORMALMIND_APP_ID }}
           private-key: ${{ secrets.FORMALMIND_APP_PRIVATE_KEY }}
+      # The roles are the formalmind plugin's skills (formalmind/skills), pinned: bump
+      # FORMALMIND_SKILLS_REF (repository variable) to ship a change to them.
+      - name: The formalmind skills, pinned
+        uses: actions/checkout@v4
+        with:
+          repository: formalmind/skills
+          ref: ${{ vars.FORMALMIND_SKILLS_REF || '3cc2de285936c4c9f81977404acd8696bbe5c178' }}
+          path: .formalmind-skills
+      - name: Keep the skills out of the project's commits
+        run: echo .formalmind-skills >> .git/info/exclude
       - name: Run the formal-mind bot (Claude Code)
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ steps.app.outputs.token || github.token }}
+          plugin_marketplaces: ${{ github.workspace }}/.formalmind-skills
+          plugins: formalmind@formalmind
           prompt: |
-            Follow the instructions in .github/formal-mind-prompt.md exactly.
+            Use the formalmind:reconcile skill and follow it exactly.
             PROTO_REPO=${{ env.PROTO_REPO }}
             PROTO_SHA=${{ env.PROTO_SHA }}
           # ~200 tool calls: a hard reconciliation is a few dozen edit/`lake build` cycles at 1-3 min each.
