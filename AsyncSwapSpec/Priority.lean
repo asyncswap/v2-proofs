@@ -95,7 +95,7 @@ structure PriorityLevel where
 namespace PriorityLevel
 
 /-- `bestAtPrice` in `PriorityFee` mode: the order whose key is `priorityOrders.best(true)`. -/
-noncomputable def best (L : PriorityLevel) (h : L.orders.Nonempty) : Resting :=
+noncomputable def best (L : PriorityLevel) (_h : L.orders.Nonempty) : Resting :=
   Classical.choose (show ∃ r ∈ L.orders, priorityKey r.fee r.seq = L.tree.best true from by
     have hmem := (Trie.best_true_spec L.wf).1
     rw [L.keys_eq, Finset.mem_image] at hmem

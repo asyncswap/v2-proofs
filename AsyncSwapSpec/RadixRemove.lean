@@ -349,7 +349,7 @@ theorem reads_untouched (C : RemoveCtx T p leafId branchId siblingId grandId goL
   · rw [hsame x hx hxid]; exact ⟨rfl, rfl⟩
 
 /-- The id the parent should point at after the removal. -/
-def newId (leafId branchId siblingId : ℕ) (id : ℕ) : ℕ := if id = branchId then siblingId else id
+def newId (_leafId branchId siblingId : ℕ) (id : ℕ) : ℕ := if id = branchId then siblingId else id
 
 /-- **Lemma B.** The subtree containing the leaf (strictly below its root) reads `removeLeaf`. -/
 theorem reads_removed (C : RemoveCtx T p leafId branchId siblingId grandId goLeft) :
@@ -416,7 +416,7 @@ theorem reads_removed (C : RemoveCtx T p leafId branchId siblingId grandId goLef
           congr 2
           · by_cases hgl : (T.nodes id).left = branchId
             · have hgid : grandId = id := by rw [C.grand_def, ← hgl]; exact hpL
-              have hgo : goLeft = true := by rw [C.goLeft_def, hgid, hgl]; try simp
+              have hgo : goLeft = true := by rw [C.goLeft_def, hgid, hgl]
               rw [← hgid, Tree.relink_nodes_grand T _ _ _ _ _ (hgid ▸ hne) C.grand_ne_leaf C.grand_ne_branch
                 C.grand_ne_sibling, hgo]; simp [show (T.nodes grandId).left = branchId by rw [hgid]; exact hgl]
             · have hgne : grandId ≠ id := by
@@ -429,7 +429,7 @@ theorem reads_removed (C : RemoveCtx T p leafId branchId siblingId grandId goLef
               simp [hgl]
           · by_cases hgl : (T.nodes id).left = branchId
             · have hgid : grandId = id := by rw [C.grand_def, ← hgl]; exact hpL
-              have hgo : goLeft = true := by rw [C.goLeft_def, hgid, hgl]; try simp
+              have hgo : goLeft = true := by rw [C.goLeft_def, hgid, hgl]
               rw [← hgid, Tree.relink_nodes_grand T _ _ _ _ _ (hgid ▸ hne) C.grand_ne_leaf C.grand_ne_branch
                 C.grand_ne_sibling, hgo]; simp
             · have hgne : grandId ≠ id := by
@@ -444,7 +444,7 @@ theorem reads_removed (C : RemoveCtx T p leafId branchId siblingId grandId goLef
           by_cases hgl : (T.nodes id).left = branchId
           · -- the branch is the left child of `id`: `id` is the grandparent
             have hgid : grandId = id := by rw [C.grand_def, ← hgl]; exact hpL
-            have hgo : goLeft = true := by rw [C.goLeft_def, hgid, hgl]; try simp
+            have hgo : goLeft = true := by rw [C.goLeft_def, hgid, hgl]
             have hnode : (T4).nodes id = { T.nodes id with left := siblingId } := by
               rw [← hgid, Tree.relink_nodes_grand T _ _ _ _ _ (hgid ▸ hne) C.grand_ne_leaf C.grand_ne_branch
                 C.grand_ne_sibling, hgo]; simp
@@ -509,7 +509,7 @@ theorem reads_removed (C : RemoveCtx T p leafId branchId siblingId grandId goLef
           · rw [hs, hbid]
         subst hr_leaf
         have hnew : newId leafId branchId siblingId id = (T.nodes id).left := by simp [newId, hbid, hsib]
-        refine ⟨l, by simp [Trie.removeLeaf, Trie.keys, hp_nl], ?_, ?_, ?_⟩
+        refine ⟨l, by simp [Trie.removeLeaf, hp_nl], ?_, ?_, ?_⟩
         · rw [hnew]; exact hLl
         · intro y hy
           rw [hnew, hLids] at hy
@@ -736,8 +736,8 @@ theorem remove_refines (h : Repr T t) (hw : Trie.Wf t) (hp : p ∈ t.keys) (hroo
   have hchildren : ((T.nodes branchId).left = leafId ∧ siblingId = (T.nodes branchId).right) ∨
       ((T.nodes branchId).right = leafId ∧ siblingId = (T.nodes branchId).left) := by
     by_cases hcl : (T.nodes branchId).left = leafId
-    · exact Or.inl ⟨hcl, by rw [hsiblingId, if_pos hcl]⟩
-    · exact Or.inr ⟨hbr_child.resolve_left hcl, by rw [hsiblingId, if_neg hcl]⟩
+    · exact Or.inl ⟨hcl, by rw [hsiblingId, ite_eq_left hcl]⟩
+    · exact Or.inr ⟨hbr_child.resolve_left hcl, by rw [hsiblingId, ite_eq_right hcl]⟩
   have hleaf_ne_sib : leafId ≠ siblingId := by
     rcases hchildren with ⟨hc, hs⟩ | ⟨hc, hs⟩
     · exact hdisj leafId (by rw [← hc]; exact mem_idsFrom_self _ _ _) siblingId (by rw [hs]; exact mem_idsFrom_self _ _ _)
@@ -829,13 +829,13 @@ theorem remove_refines (h : Repr T t) (hw : Trie.Wf t) (hp : p ∈ t.keys) (hroo
   have hroot_eq : T4.root = newId leafId branchId siblingId T.root := by
     rw [hT4, Tree.relink_root]; simp only [newId]
     by_cases hbroot : branchId = T.root
-    · simp only [hg0.2 hbroot, hbroot.symm, ↓reduceIte, eq_self_iff_true]
+    · simp only [hg0.2 hbroot, hbroot.symm, ↓reduceIte]
     · have h1 : ¬ grandId = 0 := fun e => hbroot (hg0.1 e)
       simp only [h1, Ne.symm hbroot, ↓reduceIte]
   have hroot_parent : (T4.nodes (newId leafId branchId siblingId T.root)).parent = 0 := by
     rw [hT4]; simp only [newId]
     by_cases hbroot : T.root = branchId
-    · simp only [hbroot, ↓reduceIte, eq_self_iff_true]
+    · simp only [hbroot, ↓reduceIte]
       rw [Tree.relink_nodes_sibling T _ _ _ _ _ (Ne.symm hleaf_ne_sib) (Ne.symm hbr_ne_sib) (Ne.symm hg_ne_sib)]
       exact hg0.2 hbroot.symm
     · simp only [hbroot, ↓reduceIte]

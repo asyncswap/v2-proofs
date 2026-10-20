@@ -211,7 +211,7 @@ theorem swap_eq_some_iff (cfg : Config) (w : World) (sender : Address) (o : Orde
       · intro _
         refine ⟨t.w, ?_⟩
         show (if t.deltasZero cfg then some t.w else none) = some t.w
-        rw [if_pos (swapBody_deltasZero h)]
+        rw [ite_eq_left (swapBody_deltasZero h)]
   · constructor
     · rintro ⟨w', hw⟩; simp at hw
     · rintro ⟨h1, h2, _⟩; exact absurd ⟨h1, h2⟩ hg
@@ -288,7 +288,7 @@ theorem fill_orders {cfg : Config} {w w' : World} {sender : Address} {o : Order}
     w'.orders = Function.update w.orders o.key ⟨0, 0, 0, false⟩ := by
   unfold fillOrder at h; split_ifs at h; simp only [Option.some.injEq] at h; subst h
   simp only [fillBody, orders_setPendingNative, orders_deleteOrder, orders_settleBidBody, orders_payOutBody,
-    orders_mint, orders_payOut, orders_settle, orders_transfer, orders_start]
+    orders_mint, orders_payOut]
   split_ifs <;> rfl
 
 theorem cancel_orders {cfg : Config} {w w' : World} {sender : Address} {o : Order}

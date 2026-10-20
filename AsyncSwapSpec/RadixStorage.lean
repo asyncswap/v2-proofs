@@ -219,7 +219,7 @@ theorem bestFrom_refines {T : Tree} {id : ℕ} {t : Trie} (h : Reads T id t) (hi
 theorem best_refines {T : Tree} {t : Trie} (h : Repr T t) (highest : Bool) {fuel : ℕ}
     (hf : t.height ≤ fuel) : T.best highest fuel = (true, t.best highest) := by
   unfold Tree.best
-  rw [if_neg h.reads.ne_zero, bestFrom_refines h.reads highest fuel hf]
+  rw [ite_eq_right h.reads.ne_zero, bestFrom_refines h.reads highest fuel hf]
 
 theorem best_empty (highest : Bool) (fuel : ℕ) : Tree.empty.best highest fuel = (false, 0) := by
   simp [Tree.best, Tree.empty]

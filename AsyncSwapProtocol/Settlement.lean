@@ -90,7 +90,7 @@ theorem createBody_deltasZero (cfg : Config) (t : Tx) (o : Order) (info : OrderI
   have hrv := cfg.router_ne_vault
   have hhv := cfg.hook_ne_vault
   by_cases hc : c = o.input
-  · subst hc; simp [hrh, hrv, hhv, Ne.symm hrh, Ne.symm hrv, Ne.symm hhv]; omega
+  · subst hc; simp [hrh, Ne.symm hrh, Ne.symm hrv, Ne.symm hhv]; omega
   · simp [hc]; exact this
 
 theorem start_deltasZero (cfg : Config) (w : World) : (Tx.start w).deltasZero cfg := by
@@ -118,8 +118,8 @@ theorem fillBody_deltasZero (cfg : Config) (w : World) (sender : Address) (o : O
     simp only [fillBody, Tx.take, Tx.settle, Tx.mint, Tx.burn, Config.isNative, Order.input, Order.output,
       hz, hn, Bool.not_true, Bool.not_false, Bool.false_and, Bool.true_and, Bool.false_eq_true,
       Bool.true_eq_false, delta_setPendingNative, delta_transfer, delta_deleteOrder, delta_start,
-      delta_addDelta_apply, hrh, hrv, hhv, Ne.symm hrh, Ne.symm hrv, Ne.symm hhv, and_true, and_false,
-      true_and, false_and, ↓reduceIte, eq_self_iff_true, not_false_eq_true] <;>
+      delta_addDelta_apply, hrh, Ne.symm hhv, and_true, and_false,
+      true_and, ↓reduceIte] <;>
     omega
 
 theorem cancelBody_deltasZero (cfg : Config) (t : Tx) (o : Order) (ht : t.deltasZero cfg) :
@@ -130,7 +130,7 @@ theorem cancelBody_deltasZero (cfg : Config) (t : Tx) (o : Order) (ht : t.deltas
   have hhv := cfg.hook_ne_vault
   simp only [cancelBody, Tx.take, Tx.burn, delta_transfer, delta_deleteOrder, delta_addDelta_apply]
   by_cases hc : c = o.input
-  · subst hc; simp [hrh, hhv, Ne.symm hrh, Ne.symm hhv]; omega
+  · subst hc; simp [hrh, Ne.symm hhv]; omega
   · simp [hc]; exact this
 
 theorem collectBody_deltasZero (cfg : Config) (w : World) (c : Currency) (r : Address) :
@@ -140,7 +140,7 @@ theorem collectBody_deltasZero (cfg : Config) (w : World) (c : Currency) (r : Ad
   have hhv := cfg.hook_ne_vault
   simp only [collectBody, Tx.take, Tx.burn, delta_transfer, delta_addDelta_apply, delta_start]
   by_cases hc : c' = c
-  · subst hc; simp [hrv, hhv, Ne.symm hrv, Ne.symm hhv]
+  · subst hc; simp [hrv, hhv]
   · simp [hc]
 
 /-- **Completeness.** The PoolManager's end-of-unlock check never reverts a transaction
@@ -199,17 +199,16 @@ theorem fill_settlement {cfg : Config} {w w' : World} {sender : Address} {o : Or
   all_goals
     (try cases c) <;> cases hz : o.zeroForOne <;> by_cases hn : cfg.native0 = true <;>
     simp only [Config.isNative, Order.output, hz, hn, Bool.not_true, Bool.not_false, Bool.false_and,
-      Bool.true_and, Bool.false_eq_true, Bool.true_eq_false, ↓reduceIte] at hval <;>
+      Bool.true_and, Bool.false_eq_true, ↓reduceIte] at hval <;>
     simp only [fillBody, Tx.take, Tx.settle, Config.isNative, Order.input, Order.output, hz, hn,
       Bool.not_true, Bool.not_false, Bool.false_and, Bool.true_and, Bool.false_eq_true, Bool.true_eq_false,
       bal_setPendingNative, bal_mint, bal_burn, bal_addDelta, bal_deleteOrder, bal_start,
       claims_setPendingNative, claims_transfer, claims_addDelta, claims_deleteOrder, claims_start,
       bal_transfer_apply, claims_mint_apply, claims_burn_apply,
-      h1, h2, h3, h4, h5, h6, h7, Ne.symm h1, Ne.symm h2, Ne.symm h3, Ne.symm h4, Ne.symm h5, Ne.symm h6,
-      Ne.symm h7, hpm_hook, hhv, hpv, Ne.symm hpm_hook, Ne.symm hhv, Ne.symm hpv,
-      and_true, and_false, true_and, false_and, ↓reduceIte, eq_self_iff_true,
-      not_false_eq_true] <;>
-    omega
+      h1, h2, h3, h5, h6, Ne.symm h1, Ne.symm h3, Ne.symm h6,
+      hpm_hook, hhv, Ne.symm hhv,
+      and_true, and_false, ↓reduceIte]
+  all_goals omega
 
 /-- A fill reads the live stored terms: the `amountIn` / `amountOutMin` the filler passes in
     calldata are irrelevant (`updatePrice` front-running cannot change what is paid beyond the
@@ -238,10 +237,8 @@ theorem cancel_settlement {cfg : Config} {w w' : World} {sender : Address} {o : 
       Bool.true_eq_false, orders_start, bal_burn, bal_addDelta, bal_deleteOrder, bal_start,
       claims_transfer, claims_addDelta, claims_deleteOrder, claims_start, bal_transfer_apply,
       claims_burn_apply,
-      h1, h2, Ne.symm h1, Ne.symm h2, hpm_hook, Ne.symm hpm_hook,
-      and_true, and_false, true_and, false_and, ↓reduceIte, eq_self_iff_true,
-      not_false_eq_true] <;>
-    omega
+      h1, Ne.symm h2, hpm_hook,
+      and_true, ↓reduceIte]
 
 /-! ## Authorization -/
 
@@ -352,13 +349,12 @@ theorem collect_settlement {cfg : Config} {w w' : World} {sender : Address} {c :
     omega
   · cases c <;>
       simp only [collectBody, Tx.take, bal_addDelta, bal_burn, bal_transfer_apply, bal_start,
-        hr, Ne.symm hr, Ne.symm hpv, hpv, and_true, and_false, true_and, false_and, ↓reduceIte,
-        eq_self_iff_true, not_false_eq_true, Bool.false_eq_true, Bool.true_eq_false] <;> omega
+        hr, ↓reduceIte]
   · intro c'
     cases c <;> cases c' <;>
       simp only [collectBody, Tx.take, claims_transfer, claims_addDelta, claims_burn_apply, claims_start,
-        hhv, Ne.symm hhv, and_true, and_false, true_and, false_and, ↓reduceIte, eq_self_iff_true,
-        not_false_eq_true, Bool.false_eq_true, Bool.true_eq_false]
+        hhv, and_false, ↓reduceIte,
+        Bool.false_eq_true, Bool.true_eq_false]
 
 /-- Collecting never moves maker escrow: the hook's claims are untouched (above) and the
     PoolManager pays out at most what the vault held, which the guard requires to be backed. -/
@@ -380,9 +376,7 @@ theorem sweep_settlement {cfg : Config} {w w' : World} {sender : Address} {c : C
   split_ifs at h with hg
   simp only [Option.some.injEq] at h; subst h
   refine ⟨hg.1, ?_, ?_, rfl, rfl⟩
-  · cases c <;> simp only [bal_transfer_apply, bal_start, hd, Ne.symm hd, ↓reduceIte, eq_self_iff_true,
-      Bool.false_eq_true, Bool.true_eq_false, if_true, if_false]
-  · cases c <;> simp only [bal_transfer_apply, bal_start, hd, Ne.symm hd, ↓reduceIte, eq_self_iff_true,
-      Bool.false_eq_true, Bool.true_eq_false, if_true, if_false]
+  · cases c <;> simp only [bal_transfer_apply, bal_start, Ne.symm hd, ↓reduceIte]
+  · cases c <;> simp only [bal_transfer_apply, bal_start, hd, ↓reduceIte]
 
 end AsyncSwapProtocol
