@@ -1,5 +1,17 @@
 {
-  "projects": [
-    { "repo": "asyncswap/v2-proofs", "protocol": "asyncswap/v2" }
-  ]
+	"projects": [
+		{
+			"repo": "asyncswap/v2-proofs",
+			"protocol": "asyncswap/contracts"
+		},
+		{
+			"repo": "mmsaki/v4-core-proofs",
+			"protocol": "mmsaki/v4-core"
+		},
+		{
+			"repo": "asyncswap/protocol-proofs",
+			"protocol": "asyncswap/protocol",
+			"mode": "audit"
+		}
+	]
 }

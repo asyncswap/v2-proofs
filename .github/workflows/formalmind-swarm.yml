@@ -1,6 +1,6 @@
 name: formalmind swarm
 
-# A small team of bots that take the roadmap in README.md and keep working on it, hands off,
+# A small team of bots that take the roadmap in .formal/plan.md and keep working on it, hands off,
 # within a spend budget. GitHub is their shared memory: issues are the task queue, `fm:*`
 # labels are the state machine, pull requests are the deliverables, and issue #38 (the
 # ledger) is the spend log and the planner's digest channel. See the formalmind:swarm skill (formalmind/skills).
@@ -9,14 +9,14 @@ name: formalmind swarm
 # .github/formalmind/projects.json lists every proofs repository it works in. One budget and
 # one ledger cover all of them; each project keeps its own fm: labels, issues and PRs.
 #
-# Every 30 minutes (or as soon as an `fm:` label changes here) the dispatcher looks across every
+# Every 10 minutes (or as soon as an `fm:` label changes here) the dispatcher looks across every
 # project and picks at most one model job (the oldest item wins within a step), in this order: answer an /ask (the assistant's first), merge an approved PR,
 # review a PR, revise a bounced PR, resume or start an issue (proof or rebuild), advance the
 # rebuild cycle (the editor) when something moved, or plan when the queue is empty. Nothing runs when the day's or
 # month's budget is spent; the chief and the assistant only have to fit the month.
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "*/10 * * * *"
     - cron: "40 23 * * *"   # the chief audits the day, once before the budget resets
     - cron: "50 23 * * *"   # the assistant turns the chief's audit into the maintainer's update
   workflow_dispatch:
@@ -301,9 +301,9 @@ jobs:
           if [ "$role" = consolidate ] && [ "$kind" = issue ] && [ "$mode" = work ]; then
             gh issue edit -R "$R" "$number" --remove-label fm:consolidate --add-label fm:consolidating 2>/dev/null || true
           fi
-          # The protocol the project models, for the roles that read it; the home's is asyncswap/v2.
+          # The protocol the project models, for the roles that read it; the home's is asyncswap/contracts.
           protocol=$(echo "$projects" | jq -r --arg r "$R" '.projects[] | select(.repo == $r) | .protocol // empty' 2>/dev/null || true)
-          [ -z "$protocol" ] && [ "$R" = "$HOME_R" ] && protocol=asyncswap/v2
+          [ -z "$protocol" ] && [ "$R" = "$HOME_R" ] && protocol=asyncswap/contracts
           echo "picked: ${role:-nothing} ${mode} ${kind:-} ${R}${number:+#$number} (cap \$$cap, rounds $rounds${since:+, since $since})"
           {
             echo "repo=$R"; echo "protocol=$protocol"; echo "role=$role"; echo "mode=$mode"; echo "number=$number"; echo "kind=$kind"; echo "cap=$cap"
@@ -457,7 +457,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: formalmind/skills
-          ref: ${{ vars.FORMALMIND_SKILLS_REF || 'b13d7b5153f5272faba6cae06a0e4ae503deec04' }}
+          ref: ${{ vars.FORMALMIND_SKILLS_REF || 'bc2f19a4bd79ea343f2f91abbf0165e8da85f381' }}
           path: .formalmind-skills
       - name: Keep the skills out of the project's commits
         run: echo .formalmind-skills >> .git/info/exclude
