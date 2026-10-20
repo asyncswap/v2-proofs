@@ -457,7 +457,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: formalmind/skills
-          ref: ${{ vars.FORMALMIND_SKILLS_REF || '3cc2de285936c4c9f81977404acd8696bbe5c178' }}
+          ref: ${{ vars.FORMALMIND_SKILLS_REF || 'b13d7b5153f5272faba6cae06a0e4ae503deec04' }}
           path: .formalmind-skills
       - name: Keep the skills out of the project's commits
         run: echo .formalmind-skills >> .git/info/exclude
