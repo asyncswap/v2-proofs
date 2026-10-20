@@ -83,7 +83,7 @@ jobs:
             PROTO_REPO=${{ env.PROTO_REPO }}
             PROTO_SHA=${{ env.PROTO_SHA }}
           # ~200 tool calls: a hard reconciliation is a few dozen edit/`lake build` cycles at 1-3 min each.
-          claude_args: '--allowedTools "Bash(lake *),Bash(git diff *),Bash(git log *),Read,Edit,Write,Glob,Grep" --max-turns 200'
+          claude_args: '--allowedTools "Bash(lake *),Bash(git diff *),Bash(git log *),Read,Edit,Write,Glob,Grep,Skill" --max-turns 200'
       - name: Gate on a clean build
         run: |
           set -o pipefail

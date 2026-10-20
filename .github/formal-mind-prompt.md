@@ -23,7 +23,9 @@ Your job, in order:
    <commit title>`, then **Trigger**, **Contract change**, **Spec impact**, **Theorems added**,
    **Theorems changed or weakened**, **Unproven gaps**, **Build**. Write "None" where that is
    the truth. Do not edit or remove earlier entries.
-6. Finish with `lake build` passing. Do not commit; the workflow commits for you.
+6. Run the `lean4-cleanup` skill on the `.lean` files you changed, so they add no linter
+   warnings. It touches proof bodies only.
+7. Finish with `lake build` passing. Do not commit; the workflow commits for you.
 
 Budget. You have about 200 tool calls and a few hours of wall clock. A `lake build` of the
 spec takes one to three minutes, so batch related edits and build once per batch, not after

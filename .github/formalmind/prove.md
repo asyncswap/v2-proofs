@@ -29,6 +29,9 @@ those.
   mirrors it.
 - Never use `sorry`, `admit` or new axioms. `lake build` must pass before you open or
   update the PR.
+- Once your proofs build, run the `lean4-cleanup` skill on the `.lean` files you touched,
+  so they add no linter warnings (unused simp arguments, no-op tactics, deprecated names).
+  It never changes a statement; build again afterwards.
 - Follow the existing style: Option-returning transitions with a single conjunction guard,
   `simp only [...]`/`omega` proofs, `dsimp only` before `omega` when sums contain `if`.
 - Keep to the files the issue names. Keep existing theorem statements unless the issue
