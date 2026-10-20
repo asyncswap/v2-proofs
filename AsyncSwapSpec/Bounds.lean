@@ -41,7 +41,7 @@ theorem gross_lt_two_pow_256 {net : ℕ} (h : net ≤ uint256Max * 997 / 1000) :
 /-! ## Price keys -/
 
 /-- `_priceKey` never reverts in `mulDiv` when the scaled amount fits. -/
-theorem priceKey_mulDiv_lt {a b : ℕ} (ha : a * priceScale < 2 ^ 256) (hb : 0 < b) :
+theorem priceKey_mulDiv_lt {a b : ℕ} (ha : a * priceScale < 2 ^ 256) (_hb : 0 < b) :
     mulDiv a priceScale b < 2 ^ 256 := by
   unfold mulDiv
   exact lt_of_le_of_lt (Nat.div_le_self _ _) ha
@@ -132,7 +132,8 @@ def IdAlloc.remove (a : IdAlloc) : IdAlloc :=
 def IdAlloc.Wf (a : IdAlloc) : Prop := a.next = liveIds a.levels + a.free
 
 theorem liveIds_succ (n : ℕ) : liveIds (n + 1) - liveIds n = if n = 0 then 1 else 2 := by
-  cases n <;> simp [liveIds] <;> omega
+  cases n <;> simp [liveIds]
+  omega
 
 theorem IdAlloc.wf_insert {a : IdAlloc} (h : a.Wf) : a.insert.Wf := by
   simp only [IdAlloc.Wf, IdAlloc.insert] at *

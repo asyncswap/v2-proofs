@@ -7,7 +7,7 @@ name: "@formalmind"
 # (prove), and answers chat itself right away. `work` runs only for read and prove: it checks
 # out the PR branch when there is one, installs Lean only for prove, and runs the bot, which
 # reads the thread with gh and posts as formalmind[bot] (code blocks, blob permalinks, inline
-# review comments, commits on a PR). Voice and rules live in .github/formalmind-mention.md.
+# review comments, commits on a PR). Voice and rules are the formalmind:mention skill (formalmind/skills).
 on:
   issue_comment:
     types: [created]
@@ -203,9 +203,19 @@ jobs:
       - name: Tools for this mode
         id: tools
         run: |
-          read="Bash(git diff:*),Bash(git log:*),Bash(git status:*),Bash(git show:*),Bash(git rev-parse:*),Bash(git branch:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh api:*),mcp__github_inline_comment__create_inline_comment,Read,Glob,Grep"
+          read="Skill,Bash(git diff:*),Bash(git log:*),Bash(git status:*),Bash(git show:*),Bash(git rev-parse:*),Bash(git branch:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh api:*),mcp__github_inline_comment__create_inline_comment,Read,Glob,Grep"
           prove="$read,Bash(lake:*),Bash(git switch:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(gh pr create:*),Edit,Write"
           if [ "$MODE" = prove ]; then echo "allowed=$prove"; else echo "allowed=$read"; fi >> "$GITHUB_OUTPUT"
+      # The roles are the formalmind plugin's skills (formalmind/skills), pinned: bump
+      # FORMALMIND_SKILLS_REF (repository variable) to ship a change to them.
+      - name: The formalmind skills, pinned
+        uses: actions/checkout@v4
+        with:
+          repository: formalmind/skills
+          ref: ${{ vars.FORMALMIND_SKILLS_REF || 'bc2f19a4bd79ea343f2f91abbf0165e8da85f381' }}
+          path: .formalmind-skills
+      - name: Keep the skills out of the project's commits
+        run: echo .formalmind-skills >> .git/info/exclude
       - uses: anthropics/claude-code-action@v1
         id: bot
         env:
@@ -217,12 +227,15 @@ jobs:
           bot_name: "formalmind[bot]"
           bot_id: "213248595"
           include_fix_links: "false"
+          plugin_marketplaces: ${{ github.workspace }}/.formalmind-skills
+          plugins: formalmind@formalmind
           # A prompt (rather than trigger_phrase) runs the action without its tracking comment,
           # so the bot's own comments are the only thing that appears on the thread.
           prompt: |
-            Read .github/formalmind-mention.md and follow it. Then handle the mention below.
+            Use the formalmind:mention skill and follow it. Then handle the mention below.
 
             MODE=${{ env.MODE }}
+            MAINTAINER=mmsaki
             REPO=${{ github.repository }}
             KIND=${{ needs.triage.outputs.kind }}
             NUMBER=${{ needs.triage.outputs.number }}

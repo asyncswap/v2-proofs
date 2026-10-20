@@ -430,7 +430,7 @@ def cancelWithSig (cfg : Config) (w : World) (o : Order) (nonce deadline now : �
 /-- `fillFromPoolLiquidity`: the escrow is swapped through the pool; the maker is paid
     `amountOut` (claims if native).  `amountOut` is the pool's result, constrained by the
     contract's own checks (`NoActiveLiquidity`, `PartialLiquidityFill`, `LimitPriceNotMet`). -/
-abbrev liquidityFillGuard (cfg : Config) (w : World) (o : Order) (amountOut : ℕ) : Prop :=
+abbrev liquidityFillGuard (_cfg : Config) (w : World) (o : Order) (amountOut : ℕ) : Prop :=
   o.key ∈ w.openKeys ∧ (w.orders o.key).amountIn ≠ 0
   ∧ w.hasLiquidity = true
   ∧ (w.orders o.key).amountOutMin ≤ amountOut

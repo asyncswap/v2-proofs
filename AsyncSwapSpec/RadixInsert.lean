@@ -89,12 +89,12 @@ theorem link_nodes_branch (h1 : branchId ≠ cursor2) (h2 : branchId ≠ leafId)
 theorem link_nodes_cursor (h1 : cursor2 ≠ leafId) (h2 : cursor2 ≠ parentId) (h3 : cursor2 ≠ branchId) :
     (T.link price split leafId branchId parentId cursor2).nodes cursor2 = { T.nodes cursor2 with parent := branchId } := by
   simp only [link]
-  split_ifs <;> simp [nodes_setNode, h1, h2, h3, Ne.symm h1, Ne.symm h2, Ne.symm h3]
+  split_ifs <;> simp [nodes_setNode, h1, h2, h3, Ne.symm h1, Ne.symm h2]
 
 theorem link_nodes_leaf (h1 : leafId ≠ parentId) (h2 : leafId ≠ branchId) (h3 : leafId ≠ cursor2) :
     (T.link price split leafId branchId parentId cursor2).nodes leafId = { T.nodes leafId with parent := branchId } := by
   simp only [link]
-  split_ifs <;> simp [nodes_setNode, h1, h2, h3, Ne.symm h1, Ne.symm h2, Ne.symm h3]
+  split_ifs <;> simp [nodes_setNode, h1, h2, h3, Ne.symm h1]
 
 theorem link_nodes_parent (h0 : parentId ≠ 0) (h1 : parentId ≠ branchId) (h2 : parentId ≠ cursor2)
     (h3 : parentId ≠ leafId) :
@@ -102,7 +102,7 @@ theorem link_nodes_parent (h0 : parentId ≠ 0) (h1 : parentId ≠ branchId) (h2
       if (T.nodes parentId).left = cursor2 then { T.nodes parentId with left := branchId }
       else { T.nodes parentId with right := branchId } := by
   simp only [link]
-  split_ifs <;> simp_all [nodes_setNode, Ne.symm h1, Ne.symm h2, Ne.symm h3]
+  split_ifs <;> simp_all [nodes_setNode]
 
 theorem link_parent_other {x : ℕ} (h1 : x ≠ branchId) (h2 : x ≠ cursor2) (h3 : x ≠ leafId) :
     ((T.link price split leafId branchId parentId cursor2).nodes x).parent = (T.nodes x).parent := by
@@ -306,7 +306,7 @@ theorem reads_inserted (C : InsertCtx T p leafId branchId) (split : ℕ) :
     have hx : par = par' ∧ id = x := by
       cases fuel <;> simpa [Tree.descendUntil, hl] using hdesc
     obtain ⟨rfl, rfl⟩ := hx
-    simp only [eq_self_iff_true, ↓reduceIte, insertAt_leaf]
+    simp only [↓reduceIte, insertAt_leaf]
     obtain ⟨h1, h2, h3, h4, h5, h6, h7⟩ :=
       link_stop C split (Reads.leaf id q hne hl hq) hnd hleaf hbr hpar hpar_nin hpl hpb
     exact ⟨mem_idsFrom_self _ _ _, by simp, fun h => absurd rfl h, h1, h2, h3, h4, h5, h6, h7⟩
@@ -331,7 +331,7 @@ theorem reads_inserted (C : InsertCtx T p leafId branchId) (split : ℕ) :
     simp only [Trie.height] at hf
     by_cases hsplit : split < b
     · -- the descent continues into the child selected by the price's bit `b`
-      simp only [Tree.descendUntil, hl, hb, hsplit, eq_self_iff_true, true_and, and_self, ↓reduceIte] at hdesc
+      simp only [Tree.descendUntil, hl, hb, hsplit, and_self, ↓reduceIte] at hdesc
       cases hbit : p.testBit b
       · -- into the left child
         simp only [hbit, Bool.false_eq_true, ↓reduceIte] at hdesc
@@ -359,7 +359,7 @@ theorem reads_inserted (C : InsertCtx T p leafId branchId) (split : ℕ) :
           · have hpid : par' = id := hiff.2 hxl
             rw [hT', hpid, Tree.link_nodes_parent T p split leafId branchId id x hne (Ne.symm hbr_id) (Ne.symm hx_id)
               (Ne.symm hleaf_id)]
-            simp only [← hxl, eq_self_iff_true, ↓reduceIte]
+            simp only [← hxl, ↓reduceIte]
             exact ⟨trivial, trivial, trivial, trivial, trivial⟩
           · have hpid : par' ≠ id := fun e => hxl (hiff.1 e)
             rw [hT', Tree.link_nodes_other T p split leafId branchId par' x (Ne.symm hbr_id) (Ne.symm hx_id)
@@ -448,7 +448,7 @@ theorem reads_inserted (C : InsertCtx T p leafId branchId) (split : ℕ) :
           · have hpid : par' = id := hiff.2 hxr
             rw [hT', hpid, Tree.link_nodes_parent T p split leafId branchId id x hne (Ne.symm hbr_id) (Ne.symm hx_id)
               (Ne.symm hleaf_id)]
-            simp only [hlx, ↓reduceIte, ← hxr, eq_self_iff_true]
+            simp only [hlx, ↓reduceIte, ← hxr]
             exact ⟨trivial, trivial, trivial, trivial, trivial⟩
           · have hpid : par' ≠ id := fun e => hxr (hiff.1 e)
             rw [hT', Tree.link_nodes_other T p split leafId branchId par' x (Ne.symm hbr_id) (Ne.symm hx_id)
@@ -510,10 +510,10 @@ theorem reads_inserted (C : InsertCtx T p leafId branchId) (split : ℕ) :
             · rw [e, h1] at ha; exact hbr_l ha
         · rw [hnpar]; exact hpar
     · -- the descent stops here: a fresh branch goes above `id`
-      simp only [Tree.descendUntil, hl, hb, hsplit, eq_self_iff_true, true_and, and_false, ↓reduceIte,
+      simp only [Tree.descendUntil, hl, hb, hsplit, and_false, ↓reduceIte,
         Prod.mk.injEq] at hdesc
       obtain ⟨rfl, rfl⟩ := hdesc
-      simp only [eq_self_iff_true, ↓reduceIte, insertAt_branch_stop hsplit]
+      simp only [↓reduceIte, insertAt_branch_stop hsplit]
       obtain ⟨h1, h2, h3, h4, h5, h6, h7⟩ := link_stop C split hreads hnd hleaf hbr hpar hpar_nin hpl hpb
       exact ⟨mem_idsFrom_self _ _ _, by simp, fun h => absurd rfl h, h1, h2, h3, h4, h5, h6, h7⟩
 
@@ -598,7 +598,7 @@ theorem insert_refines (h : Repr T t) (hp : p ∉ t.keys) {fuel : ℕ} (hf : t.h
   have hLroot : L.root = (if cursor2 = T.root then branchId else T.root) := by
     rw [hL, Tree.link_root, hr3, hT2r]
     by_cases hc : cursor2 = T.root
-    · simp only [hc, eq_self_iff_true, ↓reduceIte, hiff.2 hc]
+    · simp only [hc, ↓reduceIte, hiff.2 hc]
     · have : ¬ parentId = 0 := fun e => hc (hiff.1 e)
       simp only [hc, this, ↓reduceIte]
   have hLn : ∀ y, y ≠ branchId → (L.nodes y).leaf = (T3.nodes y).leaf ∧ (L.nodes y).price = (T3.nodes y).price :=

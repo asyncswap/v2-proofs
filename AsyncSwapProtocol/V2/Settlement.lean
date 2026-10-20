@@ -140,35 +140,40 @@ theorem phi_settle (cfg : Config) (c : Currency) (payer creditTo : Address) (n :
   intro t c'
   simp only [phi, Tx.settle, bal_addDelta, bal_transfer_apply, supply_addDelta, supply_transfer,
     reserves_addDelta, reserves_transfer, sum_delta_addDelta cfg _ _ _ _ _ hc, delta_transfer]
-  split_ifs <;> simp_all <;> omega
+  split_ifs <;> simp_all
+  omega
 
 theorem phi_take (cfg : Config) (c : Currency) (dst : Address) (n : ℕ) (by_ : Address)
     (hd : dst ≠ cfg.pm) (hb : Locker cfg by_) : PhiPreserved cfg (fun t => t.take cfg c dst n by_) := by
   intro t c'
   simp only [phi, Tx.take, bal_addDelta, bal_transfer_apply, supply_addDelta, supply_transfer,
     reserves_addDelta, reserves_transfer, sum_delta_addDelta cfg _ _ _ _ _ hb, delta_transfer]
-  split_ifs <;> simp_all <;> omega
+  split_ifs <;> simp_all
+  omega
 
 theorem phi_mint (cfg : Config) (c : Currency) (dst : Address) (n : ℕ) (by_ : Address) (hb : Locker cfg by_) :
     PhiPreserved cfg (fun t => t.mint c dst n by_) := by
   intro t c'
   simp only [phi, bal_mint, supply_mint, reserves_mint, delta_mint, sum_delta_addDelta cfg _ _ _ _ _ hb,
     Function.update_apply]
-  split_ifs <;> simp_all <;> omega
+  split_ifs <;> simp_all
+  omega
 
 theorem phi_burn (cfg : Config) (c : Currency) (src : Address) (n : ℕ) (by_ : Address) (hb : Locker cfg by_) :
     PhiPreserved cfg (fun t => t.burn c src n by_) := by
   intro t c'
   simp only [phi, bal_burn, supply_burn, reserves_burn, delta_burn, sum_delta_addDelta cfg _ _ _ _ _ hb,
     Function.update_apply]
-  split_ifs <;> simp_all <;> omega
+  split_ifs <;> simp_all
+  omega
 
 theorem phi_donate (cfg : Config) (c : Currency) (n : ℕ) (by_ : Address) (hb : Locker cfg by_) :
     PhiPreserved cfg (fun t => t.donate c n by_) := by
   intro t c'
   simp only [phi, bal_donate, supply_donate, reserves_donate, delta_donate, sum_delta_addDelta cfg _ _ _ _ _ hb,
     Function.update_apply]
-  split_ifs <;> simp_all <;> omega
+  split_ifs <;> simp_all
+  omega
 
 theorem phi_poolSwap (cfg : Config) (ci co : Currency) (ai ao : ℕ) (by_ : Address) (hb : Locker cfg by_)
     (hne : ci ≠ co) : PhiPreserved cfg (fun t => t.poolSwap ci co ai ao by_) := by
@@ -404,7 +409,7 @@ theorem step_backing {cfg : Config} {w w' : World} {a : Action} (hb : Backing cf
       intro c'
       have h1 := cfg.nc_ne_router; have h2 := cfg.nc_ne_hook; have h3 := cfg.nc_ne_vault
       simp only [Tx.take, delta_transfer, delta_burn, delta_addDelta_apply, delta_start]
-      split_ifs <;> subst_vars <;> first | omega | simp_all
+      split_ifs <;> subst_vars <;> omega
     apply key _ h hz
     rw [phi_take cfg _ _ _ _ hr (locker_nc cfg), phi_burn cfg _ _ _ _ (locker_nc cfg)]; exact hb c
   | updatePrice s o m =>
@@ -492,17 +497,16 @@ theorem fill_settlement {cfg : Config} {w w' : World} {sender : Address} {o : Or
       ↓reduceIte] at hval ⊢ <;>
     simp only [fillBody, payOutBody, settleBidBody, Tx.payOut, Tx.take, Tx.settle, Config.isNative,
       Order.output_eq, Order.input_eq, numeraire, hz, hn, hl,
-      hasLiquidity_start, hasLiquidity_transfer, hasLiquidity_mint, hasLiquidity_burn, hasLiquidity_donate,
-      hasLiquidity_poolSwap, hasLiquidity_addDelta, hasLiquidity_setPendingNative, hasLiquidity_deleteOrder,
-      hasLiquidity_setOrder, hasLiquidity_useRouterCancelNonce,
+      hasLiquidity_start, hasLiquidity_transfer, hasLiquidity_mint, hasLiquidity_burn,
+      hasLiquidity_addDelta, hasLiquidity_setPendingNative,
       Bool.not_true, Bool.not_false, Bool.false_and, Bool.true_and, Bool.false_eq_true, Bool.true_eq_false,
       bal_setPendingNative, bal_mint, bal_burn, bal_donate, bal_addDelta, bal_deleteOrder, bal_start,
       claims_setPendingNative, claims_transfer, claims_addDelta, claims_deleteOrder, claims_donate, claims_start,
       bal_transfer_apply, claims_mint_apply, claims_burn_apply,
-      h1, h2, h3, h4, h5, h6, h7, Ne.symm h1, Ne.symm h2, Ne.symm h3, Ne.symm h4, Ne.symm h5, Ne.symm h6,
-      Ne.symm h7, hpm_hook, hhv, hpv, Ne.symm hpm_hook, Ne.symm hhv, Ne.symm hpv,
-      and_true, and_false, true_and, false_and, ↓reduceIte, eq_self_iff_true, not_false_eq_true,
-      Bool.true_eq_false, Bool.false_eq_true, true_and, and_self] <;>
+      h1, h2, h3, h5, h6, h7, Ne.symm h1, Ne.symm h3, Ne.symm h6,
+      Ne.symm h7, hpm_hook, hhv, Ne.symm hhv,
+      and_true, and_false, ↓reduceIte,
+      Bool.true_eq_false, Bool.false_eq_true, and_self] <;>
     omega
 
 set_option maxHeartbeats 1000000 in
@@ -531,17 +535,15 @@ theorem cancel_settlement {cfg : Config} {w w' : World} {sender : Address} {o : 
     (try cases c) <;> cases hz : o.zeroForOne <;> by_cases hn : cfg.native0 = true <;>
     cases hl : w.hasLiquidity <;>
     simp only [cancelBody, payOutBody, settleBidBody, Tx.payOut, Tx.take, Config.isNative,
-      Order.output_eq, Order.input_eq, numeraire, hz, hn, hl,
-      hasLiquidity_start, hasLiquidity_transfer, hasLiquidity_mint, hasLiquidity_burn, hasLiquidity_donate,
-      hasLiquidity_poolSwap, hasLiquidity_addDelta, hasLiquidity_setPendingNative, hasLiquidity_deleteOrder,
-      hasLiquidity_setOrder, hasLiquidity_useRouterCancelNonce,
+      Order.input_eq, numeraire, hz, hn, hl,
+      hasLiquidity_start, hasLiquidity_transfer, hasLiquidity_mint, hasLiquidity_burn,
+      hasLiquidity_addDelta,
       Bool.not_true, Bool.not_false, Bool.false_and, Bool.true_and, Bool.false_eq_true, Bool.true_eq_false,
       bal_mint, bal_burn, bal_donate, bal_addDelta, bal_deleteOrder, bal_start, orders_start,
       claims_transfer, claims_addDelta, claims_deleteOrder, claims_donate, claims_start,
       bal_transfer_apply, claims_mint_apply, claims_burn_apply,
-      h1, h2, h3, Ne.symm h1, Ne.symm h2, Ne.symm h3, hpm_hook, hhv, hpv, Ne.symm hpm_hook, Ne.symm hhv,
-      Ne.symm hpv, and_true, and_false, true_and, false_and, ↓reduceIte, eq_self_iff_true,
-      not_false_eq_true, and_self] <;>
+      h1, h2, h3, Ne.symm h2, hpm_hook, hhv,
+      and_true, and_false, ↓reduceIte, and_self] <;>
     omega
 
 /-- `NativeClaims.redeem`: the caller's native claims drop by `amount`, the recipient receives
@@ -556,8 +558,7 @@ theorem redeem_settlement {cfg : Config} {w w' : World} {sender : Address} {amou
   simp only [Option.some.injEq] at h; subst h
   refine ⟨?_, ?_, rfl, ?_⟩
   · simp [Tx.take, claims_burn_apply]
-  · simp only [Tx.take, bal_addDelta, bal_transfer_apply, bal_burn, bal_start, hr, Ne.symm hr, ↓reduceIte,
-      eq_self_iff_true]
-  · simp [Tx.take, Function.update_apply]
+  · simp only [Tx.take, bal_addDelta, bal_transfer_apply, bal_burn, bal_start, hr, ↓reduceIte]
+  · simp [Tx.take]
 
 end AsyncSwapProtocol.V2
