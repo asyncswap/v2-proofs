@@ -1,5 +1,10 @@
 # asyncswap/v2-proofs
 
+> **Archived.** The proofs moved into the protocol repository:
+> [asyncswap/contracts `formal/`](https://github.com/asyncswap/contracts/tree/main/formal), where they are
+> versioned with the code and linked to it by refinement theorems (asyncswap/contracts#16, #17).
+> This repository is read-only; open proof changes against `asyncswap/contracts` instead.
+
 Lean 4 + Mathlib specification and machine-checked proofs for the Async Swap protocol.
 
 | Library | Scope | Reference source |
